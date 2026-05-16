@@ -1067,7 +1067,7 @@ draw_text:
     or al, al
     jz .done
     
-    ; Reset temp_y for the next character to fix staircase bug
+    ; [FIX 1] Reset temp_y for the next character to fix staircase bug
     mov ax, [ry]
     mov [temp_y], ax
     
@@ -1080,8 +1080,10 @@ draw_text:
     
     mov cx, 8 ; 8 rows
 .row_loop:
-    mov es, dx ; restore font segment
+    ; [FIX 2] Move font segment restoration inside row loop
+    mov es, dx 
     mov al, [es:bp] ; get font byte
+    
     push cx
     mov cx, 8 ; 8 pixels
 .pixel_loop:
@@ -1089,7 +1091,10 @@ draw_text:
     jz .skip_pixel
     
     ; Draw pixel
-    pusha
+    ; [FIX 3] Optimize redundant nested pusha/popa
+    push ax
+    push cx
+    
     mov ax, 0xA000
     mov es, ax
     mov di, [temp_y]
@@ -1098,9 +1103,12 @@ draw_text:
     shl bx, 6
     add di, bx
     add di, [temp_x]
+    
     mov al, [rc]
     mov [es:di], al
-    popa
+    
+    pop cx
+    pop ax
     
 .skip_pixel:
     shl al, 1
