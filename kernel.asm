@@ -80,28 +80,29 @@ KERNEL_START:
     call long_delay
 
     ; ---- Desktop ----
-    call draw_desktop
+    mov byte [need_redraw], 1
     call init_mouse
     
-    ; Initial save of background at starting position
-    mov ax, [mouseX]
-    mov [oldMouseX], ax
-    mov ax, [mouseY]
-    mov [oldMouseY], ax
-    call save_cursor_bg
-    call draw_cursor_at_mouse
-
 .main_loop:
-    ; Check if mouse moved
+    ; Check if mouse updated
     cmp byte [mouse_updated], 1
-    jne .check_keyboard
+    je .handle_mouse
     
+    ; Check if keyboard updated
+    mov ah, 1
+    int 0x16
+    jnz .handle_keyboard
+    
+    ; If nothing happened but need_redraw is set
+    cmp byte [need_redraw], 1
+    je .do_render
+    
+    jmp .main_loop
+
+.handle_mouse:
     mov byte [mouse_updated], 0
     
-    call restore_cursor_bg
-
     ; --- Handle Window Interactions ---
-    
     ; Check for Left Button Down (bit 0 of mouseButtons)
     mov al, [mouseButtons]
     test al, 1
@@ -113,8 +114,60 @@ KERNEL_START:
     jnz .continue_drag
     
     ; Left button just pressed - Hit detection
+    ; 1. Check Terminal Window (on top)
+    cmp byte [termVisible], 0
+    je .check_welcome_window
+    
+    ; Close button (Terminal)
+    mov ax, [mouseX]
+    mov bx, [termX]
+    add bx, 190
+    cmp ax, bx
+    jl .check_term_title
+    add bx, 6
+    cmp ax, bx
+    jg .check_term_title
+    mov ax, [mouseY]
+    mov bx, [termY]
+    add bx, 3
+    cmp ax, bx
+    jl .check_term_title
+    add bx, 6
+    cmp ax, bx
+    jg .check_term_title
+    
+    mov byte [termVisible], 0
+    mov byte [need_redraw], 1
+    jmp .done_mouse
+
+.check_term_title:
+    mov ax, [mouseX]
+    mov bx, [termX]
+    cmp ax, bx
+    jl .check_welcome_window
+    add bx, 200
+    cmp ax, bx
+    jg .check_welcome_window
+    mov ax, [mouseY]
+    mov bx, [termY]
+    cmp ax, bx
+    jl .check_welcome_window
+    add bx, 12
+    cmp ax, bx
+    jg .check_welcome_window
+    
+    mov byte [termDragging], 1
+    mov ax, [mouseX]
+    sub ax, [termX]
+    mov [dragOffsetX], ax
+    mov ax, [mouseY]
+    sub ax, [termY]
+    mov [dragOffsetY], ax
+    jmp .done_mouse
+
+.check_welcome_window:
     cmp byte [windowVisible], 0
-    je .no_hit
+    je .check_icons
     
     ; Check Close button (relative X: 174-180, Y: 3-9)
     mov ax, [mouseX]
@@ -138,25 +191,25 @@ KERNEL_START:
     ; Hit Close button!
     mov byte [windowVisible], 0
     mov byte [need_redraw], 1
-    jmp .no_hit
+    jmp .done_mouse
     
 .check_title_hit:
     ; Check Title bar (relative X: 0-180, Y: 0-12)
     mov ax, [mouseX]
     mov bx, [windowX]
     cmp ax, bx
-    jl .no_hit
+    jl .check_icons
     add bx, 180
     cmp ax, bx
-    jg .no_hit
+    jg .check_icons
     
     mov ax, [mouseY]
     mov bx, [windowY]
     cmp ax, bx
-    jl .no_hit
+    jl .check_icons
     add bx, 12
     cmp ax, bx
-    jg .no_hit
+    jg .check_icons
     
     ; Hit Title bar! Start dragging
     mov byte [isDragging], 1
@@ -166,13 +219,32 @@ KERNEL_START:
     mov ax, [mouseY]
     sub ax, [windowY]
     mov [dragOffsetY], ax
-    jmp .no_hit
+    jmp .done_mouse
+
+.check_icons:
+    ; Check Terminal Icon (X: 28-44, Y: 100-116)
+    mov ax, [mouseX]
+    cmp ax, 28
+    jl .done_mouse
+    cmp ax, 44
+    jg .done_mouse
+    mov ax, [mouseY]
+    cmp ax, 100
+    jl .done_mouse
+    cmp ax, 116
+    jg .done_mouse
+    
+    mov byte [termVisible], 1
+    mov byte [need_redraw], 1
+    jmp .done_mouse
 
 .continue_drag:
+    cmp byte [termDragging], 1
+    je .do_term_drag
     cmp byte [isDragging], 1
-    jne .no_hit
+    jne .done_mouse
     
-    ; Update window position
+    ; Update Welcome window position
     mov ax, [mouseX]
     sub ax, [dragOffsetX]
     mov [windowX], ax
@@ -180,55 +252,137 @@ KERNEL_START:
     sub ax, [dragOffsetY]
     mov [windowY], ax
     mov byte [need_redraw], 1
-    jmp .no_hit
+    jmp .done_mouse
+
+.do_term_drag:
+    mov ax, [mouseX]
+    sub ax, [dragOffsetX]
+    mov [termX], ax
+    mov ax, [mouseY]
+    sub ax, [dragOffsetY]
+    mov [termY], ax
+    mov byte [need_redraw], 1
+    jmp .done_mouse
 
 .not_dragging:
     mov byte [isDragging], 0
+    mov byte [termDragging], 0
 
-.no_hit:
+.done_mouse:
     mov al, [mouseButtons]
     mov [prevMouseButtons], al
+    jmp .do_render
 
-    ; --- End of Window Interactions ---
-
-    cmp byte [need_redraw], 1
-    jne .just_move_cursor
-    
-    mov byte [need_redraw], 0
-    call draw_desktop
-    ; After redraw, update oldMouse to current mouse and save bg
-    mov ax, [mouseX]
-    mov [oldMouseX], ax
-    mov ax, [mouseY]
-    mov [oldMouseY], ax
-    call save_cursor_bg
-    call draw_cursor_at_mouse
-    jmp .check_keyboard
-
-.just_move_cursor:
-    mov ax, [mouseX]
-    mov [oldMouseX], ax
-    mov ax, [mouseY]
-    mov [oldMouseY], ax
-    
-    call save_cursor_bg
-    call draw_cursor_at_mouse
-
-.check_keyboard:
-    mov ah, 1
-    int 0x16
-    jz .main_loop
-
-    ; Wait for keypress, then reboot
+.handle_keyboard:
     mov ah, 0
     int 0x16
+    
+    ; If Terminal is visible, handle input there
+    cmp byte [termVisible], 1
+    jne .reboot_check
+    
+    ; Handle Enter (process command)
+    cmp al, 13
+    je .process_command
+    
+    ; Handle Backspace
+    cmp al, 8
+    je .handle_backspace
+    
+    ; Handle printable chars
+    cmp al, 32
+    jl .main_loop
+    cmp al, 126
+    jg .main_loop
+    
+    ; Append to buffer if not full
+    mov bx, [term_buffer_len]
+    cmp bx, 60 ; max length
+    jae .main_loop
+    
+    mov di, term_buffer
+    add di, bx
+    mov [di], al
+    inc word [term_buffer_len]
+    mov byte [di+1], 0 ; Null terminate
+    mov byte [need_redraw], 1
+    jmp .do_render
+
+.handle_backspace:
+    mov bx, [term_buffer_len]
+    or bx, bx
+    jz .main_loop
+    dec word [term_buffer_len]
+    dec bx
+    mov di, term_buffer
+    add di, bx
+    mov byte [di], 0
+    mov byte [need_redraw], 1
+    jmp .do_render
+
+.process_command:
+    ; check 'exit'
+    mov si, term_buffer
+    cmp byte [si], 'e'
+    jne .check_cls
+    cmp byte [si+1], 'x'
+    jne .check_cls
+    cmp byte [si+2], 'i'
+    jne .check_cls
+    cmp byte [si+3], 't'
+    jne .check_cls
+    cmp byte [si+4], 0
+    jne .check_cls
+    mov byte [termVisible], 0
+    mov byte [need_redraw], 1
+    jmp .clear_buffer
+
+.check_cls:
+    ; check 'cls'
+    mov si, term_buffer
+    cmp byte [si], 'c'
+    jne .clear_buffer
+    cmp byte [si+1], 'l'
+    jne .clear_buffer
+    cmp byte [si+2], 's'
+    jne .clear_buffer
+    cmp byte [si+3], 0
+    jne .clear_buffer
+    ; fallthrough to clear_buffer
+
+.clear_buffer:
+    mov word [term_buffer_len], 0
+    push es
+    push ds
+    pop es
+    mov di, term_buffer
+    mov cx, 64
+    xor al, al
+    rep stosb
+    pop es
+    mov byte [need_redraw], 1
+    jmp .do_render
+
+.reboot_check:
     int 0x19
 
-.hang:
-    cli
-    hlt
-    jmp .hang
-
+.do_render:
+    mov byte [need_redraw], 0
+    
+    ; Redraw everything to backbuffer
+    mov word [draw_seg], BUF_SEG
+    call draw_desktop
+    
+    ; Draw cursor to backbuffer
+    mov ax, [mouseX]
+    mov [rx], ax
+    mov ax, [mouseY]
+    mov [ry], ax
+    call draw_cursor
+    
+    ; Flip
+    call flip_buffer
+    jmp .main_loop
 
 ; ============================================================================
 ; Mouse Driver & Support
@@ -315,94 +469,6 @@ mouse_handler:
     popa
     pop ds
     retf
-
-save_cursor_bg:
-    pusha
-    push es
-    mov ax, 0xA000
-    mov es, ax
-    mov si, cursor_bg_buffer
-    
-    mov dx, [oldMouseY]
-    mov bx, [oldMouseX]
-    
-    mov cx, 12 ; height
-.row:
-    push cx
-    push bx
-    
-    mov di, dx
-    mov ax, di
-    shl di, 8
-    shl ax, 6
-    add di, ax
-    add di, bx
-    
-    mov cx, 8 ; width
-.col:
-    mov al, [es:di]
-    mov [si], al
-    inc di
-    inc si
-    loop .col
-    
-    pop bx
-    pop cx
-    inc dx
-    loop .row
-    
-    pop es
-    popa
-    ret
-
-restore_cursor_bg:
-    pusha
-    push es
-    mov ax, 0xA000
-    mov es, ax
-    mov si, cursor_bg_buffer
-    
-    mov dx, [oldMouseY]
-    mov bx, [oldMouseX]
-    
-    mov cx, 12 ; height
-.row:
-    push cx
-    push bx
-    
-    mov di, dx
-    mov ax, di
-    shl di, 8
-    shl ax, 6
-    add di, ax
-    add di, bx
-    
-    mov cx, 8 ; width
-.col:
-    mov al, [si]
-    mov [es:di], al
-    inc di
-    inc si
-    loop .col
-    
-    pop bx
-    pop cx
-    inc dx
-    loop .row
-    
-    pop es
-    popa
-    ret
-
-draw_cursor_at_mouse:
-    pusha
-    mov ax, [oldMouseX]
-    mov [rx], ax
-    mov ax, [oldMouseY]
-    mov [ry], ax
-    call draw_cursor
-    popa
-    ret
 
 draw_rect_3d:
     pusha
@@ -758,6 +824,19 @@ draw_desktop:
     mov si, str_recycle
     call draw_text
 
+    ; Terminal icon
+    mov word [rx], 28
+    mov word [ry], 100
+    mov si, terminal_icon
+    call draw_icon
+
+    ; Terminal text
+    mov word [rx], 8
+    mov word [ry], 120
+    mov byte [rc], 4
+    mov si, str_terminal
+    call draw_text
+
     ; Taskbar
     mov word [rx],0
     mov word [ry],176
@@ -959,6 +1038,85 @@ draw_desktop:
     mov si, str_clock
     call draw_text
 
+    ; --- Terminal Window ---
+    cmp byte [termVisible], 0
+    je .skip_terminal
+
+    ; Shadow
+    mov ax, [termX]
+    inc ax
+    mov [rx], ax
+    mov ax, [termY]
+    inc ax
+    mov [ry], ax
+    mov word [rw], 200
+    mov word [rh], 120
+    mov byte [rc], 0
+    call fill_rect
+
+    ; Body
+    mov ax, [termX]
+    mov [rx], ax
+    mov ax, [termY]
+    mov [ry], ax
+    mov word [rw], 200
+    mov word [rh], 120
+    mov byte [rc], 0 ; Black background for terminal
+    call draw_rect_3d
+
+    ; Title bar
+    mov ax, [termX]
+    mov [rx], ax
+    mov ax, [termY]
+    mov [ry], ax
+    mov word [rw], 200
+    mov word [rh], 12
+    mov byte [rc], 7
+    call draw_rect_3d
+
+    ; Title text
+    mov ax, [termX]
+    add ax, 8
+    mov [rx], ax
+    mov ax, [termY]
+    add ax, 2
+    mov [ry], ax
+    mov byte [rc], 8
+    mov si, str_term_title
+    call draw_text
+
+    ; Close button
+    mov ax, [termX]
+    add ax, 190
+    mov [rx], ax
+    mov ax, [termY]
+    add ax, 3
+    mov [ry], ax
+    mov word [rw], 6
+    mov word [rh], 6
+    mov byte [rc], 9
+    call draw_rect_3d
+
+    ; Terminal Content
+    mov ax, [termX]
+    add ax, 5
+    mov [rx], ax
+    mov ax, [termY]
+    add ax, 20
+    mov [ry], ax
+    mov byte [rc], 3 ; Accent blue for prompt
+    mov si, str_prompt
+    call draw_text
+
+    ; Current buffer
+    mov ax, [termX]
+    add ax, 20
+    mov [rx], ax
+    mov si, term_buffer
+    mov byte [rc], 8 ; White text
+    call draw_text
+
+.skip_terminal:
     popa
     ret
 
@@ -1060,13 +1218,33 @@ palette_data:
 
 
 ; ============================================================================
+; flip_buffer: copy BUF_SEG to VGA_SEG
+; ============================================================================
+flip_buffer:
+    pusha
+    push ds
+    push es
+    mov ax, BUF_SEG
+    mov ds, ax
+    xor si, si
+    mov ax, VGA_SEG
+    mov es, ax
+    xor di, di
+    mov cx, 32000
+    rep movsw
+    pop es
+    pop ds
+    popa
+    ret
+
+; ============================================================================
 ; clear_screen(al=color)
 ; ============================================================================
 clear_screen:
     pusha
     push es
-    mov bx,0xA000
-    mov es,bx
+    mov ax, [draw_seg]
+    mov es, ax
     xor di,di
     mov ah,al
     mov cx,(320*200)/2
@@ -1082,7 +1260,7 @@ clear_screen:
 fill_rect:
     pusha
     push es
-    mov ax, 0xA000
+    mov ax, [draw_seg]
     mov es, ax
 
     mov ax, [ry]
@@ -1116,7 +1294,7 @@ draw_bg_pattern:
     mov al, 1
     call clear_screen
 
-    mov ax, 0xA000
+    mov ax, [draw_seg]
     mov es, ax
 
     mov word [ry], 0
@@ -1149,7 +1327,7 @@ draw_bg_pattern:
 draw_icon:
     pusha
     push es
-    mov ax, 0xA000
+    mov ax, [draw_seg]
     mov es, ax
     
     mov bx, [ry]
@@ -1232,8 +1410,8 @@ draw_text:
     ; Draw pixel
     push ax
     push cx
-    
-    mov ax, 0xA000
+
+    mov ax, [draw_seg]
     mov es, ax
     mov di, [temp_y]
     mov bx, di
@@ -1241,10 +1419,10 @@ draw_text:
     shl bx, 6
     add di, bx
     add di, [temp_x]
-    
+
     mov al, [rc]
     mov [es:di], al
-    
+
     pop cx
     pop ax
     
@@ -1322,7 +1500,11 @@ long_delay:
 ; ============================================================================
 ; Globals
 ; ============================================================================
+VGA_SEG         equ 0xA000
+BUF_SEG         equ 0x8000
+
 is_bios_mode    dw 0
+draw_seg        dw VGA_SEG
 selected_option db 0
 tile_x          dw 0
 rx    dw 0
@@ -1348,6 +1530,15 @@ windowVisible   db 1
 isDragging      db 0
 dragOffsetX     dw 0
 dragOffsetY     dw 0
+
+; Terminal State
+termX           dw 40
+termY           dw 30
+termVisible     db 0
+termDragging    db 0
+term_buffer     times 64 db 0
+term_buffer_len dw 0
+
 need_redraw     db 0
 
 oldMouseX       dw 160
@@ -1390,6 +1581,24 @@ recycle_bin_icon:
     db 0, 0, 0, 0, 0, 15, 15, 15, 15, 15, 15, 0, 0, 0, 0, 0
     db 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 
+terminal_icon:
+    db 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    db 0, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 0
+    db 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0
+    db 0, 8, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0
+    db 0, 8, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0
+    db 0, 8, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0
+    db 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0
+    db 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0
+    db 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0
+    db 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0
+    db 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0
+    db 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0
+    db 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0
+    db 0, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 0
+    db 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    db 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
 ; ============================================================================
 ; Strings
 ; ============================================================================
@@ -1405,7 +1614,10 @@ str_start        db "Start",0
 str_search       db "Search",0
 str_this_pc      db "This PC",0
 str_recycle      db "Recycle",0
+str_terminal     db "Terminal",0
 str_clock        db "12:34",0
+str_term_title   db "Command Prompt",0
+str_prompt       db "> ",0
 
 ; BIOS Menu Strings
 str_bios_title   db "Choose an option",0
