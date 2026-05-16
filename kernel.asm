@@ -99,7 +99,113 @@ KERNEL_START:
     mov byte [mouse_updated], 0
     
     call restore_cursor_bg
+
+    ; --- Handle Window Interactions ---
     
+    ; Check for Left Button Down (bit 0 of mouseButtons)
+    mov al, [mouseButtons]
+    test al, 1
+    jz .not_dragging
+    
+    ; Was it already down?
+    mov al, [prevMouseButtons]
+    test al, 1
+    jnz .continue_drag
+    
+    ; Left button just pressed - Hit detection
+    cmp byte [windowVisible], 0
+    je .no_hit
+    
+    ; Check Close button (relative X: 174-180, Y: 3-9)
+    mov ax, [mouseX]
+    mov bx, [windowX]
+    add bx, 174
+    cmp ax, bx
+    jl .check_title_hit
+    add bx, 6
+    cmp ax, bx
+    jg .check_title_hit
+    
+    mov ax, [mouseY]
+    mov bx, [windowY]
+    add bx, 3
+    cmp ax, bx
+    jl .check_title_hit
+    add bx, 6
+    cmp ax, bx
+    jg .check_title_hit
+    
+    ; Hit Close button!
+    mov byte [windowVisible], 0
+    mov byte [need_redraw], 1
+    jmp .no_hit
+    
+.check_title_hit:
+    ; Check Title bar (relative X: 0-180, Y: 0-12)
+    mov ax, [mouseX]
+    mov bx, [windowX]
+    cmp ax, bx
+    jl .no_hit
+    add bx, 180
+    cmp ax, bx
+    jg .no_hit
+    
+    mov ax, [mouseY]
+    mov bx, [windowY]
+    cmp ax, bx
+    jl .no_hit
+    add bx, 12
+    cmp ax, bx
+    jg .no_hit
+    
+    ; Hit Title bar! Start dragging
+    mov byte [isDragging], 1
+    mov ax, [mouseX]
+    sub ax, [windowX]
+    mov [dragOffsetX], ax
+    mov ax, [mouseY]
+    sub ax, [windowY]
+    mov [dragOffsetY], ax
+    jmp .no_hit
+
+.continue_drag:
+    cmp byte [isDragging], 1
+    jne .no_hit
+    
+    ; Update window position
+    mov ax, [mouseX]
+    sub ax, [dragOffsetX]
+    mov [windowX], ax
+    mov ax, [mouseY]
+    sub ax, [dragOffsetY]
+    mov [windowY], ax
+    mov byte [need_redraw], 1
+    jmp .no_hit
+
+.not_dragging:
+    mov byte [isDragging], 0
+
+.no_hit:
+    mov al, [mouseButtons]
+    mov [prevMouseButtons], al
+
+    ; --- End of Window Interactions ---
+
+    cmp byte [need_redraw], 1
+    jne .just_move_cursor
+    
+    mov byte [need_redraw], 0
+    call draw_desktop
+    ; After redraw, update oldMouse to current mouse and save bg
+    mov ax, [mouseX]
+    mov [oldMouseX], ax
+    mov ax, [mouseY]
+    mov [oldMouseY], ax
+    call save_cursor_bg
+    call draw_cursor_at_mouse
+    jmp .check_keyboard
+
+.just_move_cursor:
     mov ax, [mouseX]
     mov [oldMouseX], ax
     mov ax, [mouseY]
@@ -706,60 +812,87 @@ draw_desktop:
     call draw_rect_3d
 
     ; Window shadow (1px offset)
-    mov word [rx],81
-    mov word [ry],41
-    mov word [rw],180
-    mov word [rh],120
-    mov byte [rc],0 ; Black
+    cmp byte [windowVisible], 0
+    je .skip_window
+
+    mov ax, [windowX]
+    inc ax
+    mov [rx], ax
+    mov ax, [windowY]
+    inc ax
+    mov [ry], ax
+    mov word [rw], 180
+    mov word [rh], 120
+    mov byte [rc], 0 ; Black
     call fill_rect
 
     ; Window body
-    mov word [rx],80
-    mov word [ry],40
-    mov word [rw],180
-    mov word [rh],120
-    mov byte [rc],6
+    mov ax, [windowX]
+    mov [rx], ax
+    mov ax, [windowY]
+    mov [ry], ax
+    mov word [rw], 180
+    mov word [rh], 120
+    mov byte [rc], 6
     call draw_rect_3d
 
     ; Title bar
-    mov word [rx],80
-    mov word [ry],40
-    mov word [rw],180
-    mov word [rh],12
-    mov byte [rc],7
+    mov ax, [windowX]
+    mov [rx], ax
+    mov ax, [windowY]
+    mov [ry], ax
+    mov word [rw], 180
+    mov word [rh], 12
+    mov byte [rc], 7
     call draw_rect_3d
 
     ; Separator line between title bar and body
-    mov word [rx],81 ; Start 1px inside to avoid overlapping with 3D border
-    mov word [ry],52
-    mov word [rw],178
-    mov word [rh],1
-    mov byte [rc],0 ; Black
+    mov ax, [windowX]
+    inc ax
+    mov [rx], ax
+    mov ax, [windowY]
+    add ax, 12
+    mov [ry], ax
+    mov word [rw], 178
+    mov word [rh], 1
+    mov byte [rc], 0 ; Black
     call fill_rect
 
     ; Title bar buttons: Minimize, Maximize, Close
     ; Minimize
-    mov word [rx],234
-    mov word [ry],43
-    mov word [rw],6
-    mov word [rh],6
-    mov byte [rc],3
+    mov ax, [windowX]
+    add ax, 154
+    mov [rx], ax
+    mov ax, [windowY]
+    add ax, 3
+    mov [ry], ax
+    mov word [rw], 6
+    mov word [rh], 6
+    mov byte [rc], 3
     call draw_rect_3d
 
     ; Maximize
-    mov word [rx],244
-    mov word [ry],43
-    mov word [rw],6
-    mov word [rh],6
-    mov byte [rc],3
+    mov ax, [windowX]
+    add ax, 164
+    mov [rx], ax
+    mov ax, [windowY]
+    add ax, 3
+    mov [ry], ax
+    mov word [rw], 6
+    mov word [rh], 6
+    mov byte [rc], 3
     call draw_rect_3d
 
     ; Close (Red)
-    mov word [rx],254
-    mov word [ry],43
-    mov word [rw],6
-    mov word [rh],6
-    mov byte [rc],9
+    mov ax, [windowX]
+    add ax, 174
+    mov [rx], ax
+    mov ax, [windowY]
+    add ax, 3
+    mov [ry], ax
+    mov word [rw], 6
+    mov word [rh], 6
+    mov byte [rc], 9
     call draw_rect_3d
 
     ; --- Text Elements ---
@@ -771,31 +904,46 @@ draw_desktop:
     call draw_text
 
     ; Window title
-    mov word [rx], 88
-    mov word [ry], 42
+    mov ax, [windowX]
+    add ax, 8
+    mov [rx], ax
+    mov ax, [windowY]
+    add ax, 2
+    mov [ry], ax
     mov byte [rc], 8
     mov si, str_window_title
     call draw_text
 
     ; Window body text
     mov byte [rc], 4
-    mov word [rx], 88
-    mov word [ry], 60
+    mov ax, [windowX]
+    add ax, 8
+    mov [rx], ax
+    mov ax, [windowY]
+    add ax, 20
+    mov [ry], ax
     mov si, str_welcome1
     call draw_text
 
-    mov word [ry], 76
+    mov ax, [windowY]
+    add ax, 36
+    mov [ry], ax
     mov si, str_welcome2
     call draw_text
 
-    mov word [ry], 92
+    mov ax, [windowY]
+    add ax, 52
+    mov [ry], ax
     mov si, str_welcome3
     call draw_text
 
-    mov word [ry], 140
+    mov ax, [windowY]
+    add ax, 100
+    mov [ry], ax
     mov si, str_press_key
     call draw_text
 
+    .skip_window:
     ; Taskbar items text
     mov byte [rc], 8
     mov word [rx], 109
@@ -967,21 +1115,14 @@ draw_bg_pattern:
     pusha
     mov al, 1
     call clear_screen
-    
+
     mov ax, 0xA000
     mov es, ax
-    
+
     mov word [ry], 0
 .y_loop:
     mov word [rx], 0
 .x_loop:
-    mov ax, [rx]
-    test ax, 7
-    jnz .next_x
-    mov ax, [ry]
-    test ax, 7
-    jnz .next_x
-    
     mov di, [ry]
     mov bx, di
     shl di, 8
@@ -989,16 +1130,15 @@ draw_bg_pattern:
     add di, bx
     add di, [rx]
     mov byte [es:di], 2
-    
-.next_x:
-    inc word [rx]
+
+    add word [rx], 8
     cmp word [rx], 320
     jb .x_loop
-    
-    inc word [ry]
+
+    add word [ry], 8
     cmp word [ry], 200
     jb .y_loop
-    
+
     popa
     ret
 
@@ -1199,9 +1339,19 @@ temp_y dw 0
 mouseX          dw 160
 mouseY          dw 100
 mouseButtons    db 0
+prevMouseButtons db 0
+mouse_updated   db 0
+
+windowX         dw 80
+windowY         dw 40
+windowVisible   db 1
+isDragging      db 0
+dragOffsetX     dw 0
+dragOffsetY     dw 0
+need_redraw     db 0
+
 oldMouseX       dw 160
 oldMouseY       dw 100
-mouse_updated   db 0
 cursor_bg_buffer times 256 db 0
 
 this_pc_icon:
