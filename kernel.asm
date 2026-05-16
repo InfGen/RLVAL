@@ -217,8 +217,8 @@ save_cursor_bg:
     mov es, ax
     mov si, cursor_bg_buffer
     
-    mov dx, [mouseY]
-    mov bx, [mouseX]
+    mov dx, [oldMouseY]
+    mov bx, [oldMouseX]
     
     mov cx, 12 ; height
 .row:
@@ -290,9 +290,9 @@ restore_cursor_bg:
 
 draw_cursor_at_mouse:
     pusha
-    mov ax, [mouseX]
+    mov ax, [oldMouseX]
     mov [rx], ax
-    mov ax, [mouseY]
+    mov ax, [oldMouseY]
     mov [ry], ax
     call draw_cursor
     popa
@@ -627,26 +627,26 @@ draw_desktop:
 
     ; --- Desktop Icons ---
     ; This PC icon
-    mov word [rx], 20
+    mov word [rx], 28
     mov word [ry], 20
     mov si, this_pc_icon
     call draw_icon
     
     ; This PC text
-    mov word [rx], 0
+    mov word [rx], 8
     mov word [ry], 40
     mov byte [rc], 4
     mov si, str_this_pc
     call draw_text
 
     ; Recycle Bin icon
-    mov word [rx], 20
+    mov word [rx], 28
     mov word [ry], 60
     mov si, recycle_bin_icon
     call draw_icon
 
     ; Recycle text
-    mov word [rx], 0
+    mov word [rx], 8
     mov word [ry], 80
     mov byte [rc], 4
     mov si, str_recycle
@@ -705,6 +705,14 @@ draw_desktop:
     mov byte [rc],2
     call draw_rect_3d
 
+    ; Window shadow (1px offset)
+    mov word [rx],81
+    mov word [ry],41
+    mov word [rw],180
+    mov word [rh],120
+    mov byte [rc],0 ; Black
+    call fill_rect
+
     ; Window body
     mov word [rx],80
     mov word [ry],40
@@ -720,6 +728,14 @@ draw_desktop:
     mov word [rh],12
     mov byte [rc],7
     call draw_rect_3d
+
+    ; Separator line between title bar and body
+    mov word [rx],81 ; Start 1px inside to avoid overlapping with 3D border
+    mov word [ry],52
+    mov word [rw],178
+    mov word [rh],1
+    mov byte [rc],0 ; Black
+    call fill_rect
 
     ; Title bar buttons: Minimize, Maximize, Close
     ; Minimize
@@ -1052,6 +1068,10 @@ draw_text:
     lodsb
     or al, al
     jz .done
+    
+    ; Reset temp_y for the next character to fix staircase bug
+    mov ax, [ry]
+    mov [temp_y], ax
     
     pusha
     ; char in AL

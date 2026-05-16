@@ -145,16 +145,15 @@ creating a comet-like motion. We replicate this in `draw_spinner` (kernel.asm):
   (`INT 15h, AX=5307h`) to power off the machine from the BIOS menu.
 - **Custom palette**: DAC entries programmed via I/O. Added "Windows Blue"
   at index 10 for the BIOS setup background.
-- **Drawing primitive**: A single `fill_rect` that reads its args from globals
-  (`rx`, `ry`, `rw`, `rh`, `rc`) — avoids fragile register juggling in 16-bit.
-- **Text**: BIOS teletype `INT 10h, AH=0Eh` (works in mode 13h, uses the
-  built-in 8×8 BIOS font — no need to ship a font).
+- **Mouse Support**: Implemented a BIOS-based mouse driver (`INT 15h, AX=C2xx`) with a custom 3D-styled cursor, background save/restore logic for flicker-free movement, and screen clamping.
+- **3D GUI Effects**: Windows are now rendered with 1-pixel 3D highlights (top/left) and shadows (bottom/right), including a shadow under the main window for depth and a dark separator line for the title bar.
+- **Custom font rendering**: A fixed `draw_text` routine that uses the BIOS 8x8 font and correctly handles character spacing.
+- **Drawing primitives**: Includes `fill_rect` and `draw_rect_3d` for consistent UI styling.
 - **Reboot**: `INT 19h` warm reboot.
 
 ## Limitations (it's a toy OS!)
 
 - No protected mode, paging, or multitasking
-- No real mouse driver (cursor drawn at a fixed position)
 - No keyboard input beyond the BIOS menu navigation and the "press any key to reboot" trigger
 - No filesystem
 - Animation timing is a busy-loop calibrated for QEMU on a modern host; speed
