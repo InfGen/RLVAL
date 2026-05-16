@@ -56,11 +56,11 @@ KERNEL_START:
 
     ; ---- Spinner animation (Windows 11 style) ----
     ; The spinner is centered at (160, 130) with radius 12.
-    ; Run ~80 frames -> spinner makes ~10 full revolutions.
+    ; Run ~240 frames -> spinner makes ~30 full revolutions.
     mov word [frame], 0
 .spin_loop:
     mov ax, [frame]
-    cmp ax, 80
+    cmp ax, 240
     jae .spin_done
 
     call draw_spinner
@@ -581,7 +581,7 @@ short_delay:
 
 long_delay:
     pusha
-    mov cx,0x0080
+    mov cx,0x0100
     mov dx,0xFFFF
 .d:
     dec dx

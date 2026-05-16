@@ -8,10 +8,11 @@ before transitioning to a minimal modern-dark GUI desktop.
 Written in pure NASM x86 assembly — no kernel, no libraries, no Linux
 underneath. It runs on the bare metal of a virtual (or real) PC.
 
-> *(Project folder is still named `myos/` from the previous version — the
-> bootable image and OS itself are RLVAL OS.)*
-
 ## Screenshots
+
+### BIOS Setup Menu (ESC during boot)
+
+![bios_setup](screenshot_bios_setup.png)
 
 ### Boot screen (Windows 11-style rotating spinner)
 
@@ -31,7 +32,7 @@ during boot and sign-in.
 
 | File | Purpose |
 |---|---|
-| `boot.asm` | 512-byte stage-1 bootloader |
+| `boot.asm` | 512-byte stage-1 bootloader with BIOS Setup trigger |
 | `kernel.asm` | The kernel: mode-13h graphics, palette, spinner animation, desktop GUI |
 | `build.sh` | Assembles both files and produces a bootable floppy image |
 | **`rlval.img`** | The 1.44 MB bootable disk image (give this to QEMU) |
@@ -65,9 +66,10 @@ qemu-system-i386 -fda rlval.img -boot a
 
 A QEMU window will open and you'll see:
 
-1. BIOS POST, then `Booting RLVAL OS...` from the bootloader.
+1. BIOS POST, then `RLVAL OS - Press ESC for Setup...` from the bootloader.
+   - Press **ESC** now to enter the BIOS Setup Menu.
 2. **Boot screen**: dark background, "RLVAL OS" wordmark, rotating spinner
-   of dots, "RLVAL Corporation" footer.
+   of dots, "RLVAL Corporation" footer. (Now with an extended animation duration!)
 3. **Desktop** appears: top menu bar, "Welcome" window with text, taskbar.
 4. **Press any key** to reboot (warm `INT 19h`).
 
@@ -131,8 +133,9 @@ creating a comet-like motion. We replicate this in `draw_spinner` (kernel.asm):
 ## Technical notes
 
 - **Boot sector** (`boot.asm`): 512 bytes, ends with the magic `0xAA55` BIOS
-  signature. Uses `INT 13h` (BIOS sector read) to copy 32 sectors to memory at
-  segment `0x1000`, then far-jumps there.
+  signature. Now includes a timed loop to check for the ESC key to enter a
+  mock BIOS Setup menu. Uses `INT 13h` (BIOS sector read) to copy 32 sectors to
+  memory at segment `0x1000`, then far-jumps there.
 - **Kernel** (`kernel.asm`): stays in 16-bit real mode. Enters VGA mode 13h via
   `INT 10h, AX=0013h` — a flat 64 KB framebuffer at `0xA0000`, one byte per
   pixel, each byte a palette index.
@@ -148,7 +151,7 @@ creating a comet-like motion. We replicate this in `draw_spinner` (kernel.asm):
 
 - No protected mode, paging, or multitasking
 - No real mouse driver (cursor drawn at a fixed position)
-- No keyboard input beyond "press any key to reboot"
+- No keyboard input beyond "press any key to reboot" and the ESC setup trigger
 - No filesystem
 - Animation timing is a busy-loop calibrated for QEMU on a modern host; speed
   will vary on real hardware
