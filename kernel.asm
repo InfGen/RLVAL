@@ -220,11 +220,11 @@ bios_menu_entry:
     call clear_screen
 
     ; Title "Choose an option"
-    mov dh, 4
-    mov dl, 12
-    call set_cursor
+    mov word [rx], 96
+    mov word [ry], 32
+    mov byte [rc], 8                ; White
     mov si, str_bios_title
-    call print_str
+    call draw_text
 
     call draw_tiles
 
@@ -301,31 +301,31 @@ draw_tiles:
     mov word [tile_x], 35
     mov byte [rc], 2                ; Slightly lighter than background
     call .draw_single_tile
-    mov dh, 14
-    mov dl, 6
-    call set_cursor
+    mov word [rx], 48
+    mov word [ry], 112
+    mov byte [rc], 8
     mov si, str_continue
-    call print_str
+    call draw_text
 
     ; Tile 1: Reboot
     mov word [tile_x], 130
     mov byte [rc], 2
     call .draw_single_tile
-    mov dh, 14
-    mov dl, 18
-    call set_cursor
+    mov word [rx], 144
+    mov word [ry], 112
+    mov byte [rc], 8
     mov si, str_reboot
-    call print_str
+    call draw_text
 
     ; Tile 2: Shutdown
     mov word [tile_x], 225
     mov byte [rc], 2
     call .draw_single_tile
-    mov dh, 14
-    mov dl, 29
-    call set_cursor
+    mov word [rx], 232
+    mov word [ry], 112
+    mov byte [rc], 8
     mov si, str_shutdown
-    call print_str
+    call draw_text
 
     popa
     ret
@@ -369,8 +369,7 @@ draw_tiles:
 draw_desktop:
     pusha
 
-    mov al, 1
-    call clear_screen
+    call draw_bg_pattern
 
     ; Top menu bar
     mov word [rx],0
@@ -382,48 +381,44 @@ draw_desktop:
 
     ; --- Desktop Icons ---
     ; This PC icon
-    mov word [rx], 28
+    mov word [rx], 20
     mov word [ry], 20
-    mov word [rw], 16
-    mov word [rh], 16
-    mov byte [rc], 3
-    call fill_rect
+    mov si, this_pc_icon
+    call draw_icon
     
     ; This PC text
-    mov dh, 5
-    mov dl, 1
-    call set_cursor
+    mov word [rx], 0
+    mov word [ry], 40
+    mov byte [rc], 4
     mov si, str_this_pc
-    call print_str
+    call draw_text
 
     ; Recycle Bin icon
-    mov word [rx], 28
+    mov word [rx], 20
     mov word [ry], 60
-    mov word [rw], 16
-    mov word [rh], 16
-    mov byte [rc], 3
-    call fill_rect
+    mov si, recycle_bin_icon
+    call draw_icon
 
     ; Recycle text
-    mov dh, 10
-    mov dl, 1
-    call set_cursor
+    mov word [rx], 0
+    mov word [ry], 80
+    mov byte [rc], 4
     mov si, str_recycle
-    call print_str
+    call draw_text
 
     ; Taskbar
     mov word [rx],0
-    mov word [ry],176               ; Shifted up
+    mov word [ry],176
     mov word [rw],320
-    mov word [rh],24                ; Height increased
+    mov word [rh],24
     mov byte [rc],5
     call fill_rect
 
     ; Centered Start button
     mov word [rx],100
-    mov word [ry],184               ; Middle of taskbar
-    mov word [rw],58                ; Widened
-    mov word [rh],8
+    mov word [ry],184
+    mov word [rw],58
+    mov word [rh],12
     mov byte [rc],3
     call fill_rect
 
@@ -433,26 +428,26 @@ draw_desktop:
     mov word [rh], 2
     
     mov word [rx], 104
-    mov word [ry], 186
+    mov word [ry], 188
     call fill_rect
     
     mov word [rx], 107
-    mov word [ry], 186
+    mov word [ry], 188
     call fill_rect
     
     mov word [rx], 104
-    mov word [ry], 189
+    mov word [ry], 191
     call fill_rect
     
     mov word [rx], 107
-    mov word [ry], 189
+    mov word [ry], 191
     call fill_rect
 
     ; Search button next to Start
     mov word [rx],162
     mov word [ry],184
     mov word [rw],54
-    mov word [rh],8
+    mov word [rh],12
     mov byte [rc],2
     call fill_rect
 
@@ -460,7 +455,7 @@ draw_desktop:
     mov word [rx],270
     mov word [ry],184
     mov word [rw],46
-    mov word [rh],8
+    mov word [rh],12
     mov byte [rc],2
     call fill_rect
 
@@ -480,40 +475,32 @@ draw_desktop:
     mov byte [rc],7
     call fill_rect
 
-    ; Window styling (borders)
-    ; Top highlight
-    mov word [rx], 80
-    mov word [ry], 40
-    mov word [rw], 180
+    ; Window styling (3D borders)
+    ; Outer highlight (Top/Left)
+    mov word [rx], 79
+    mov word [ry], 39
+    mov word [rw], 182
     mov word [rh], 1
     mov byte [rc], 15
     call fill_rect
-    ; Left highlight
-    mov word [rx], 80
-    mov word [ry], 40
+    mov word [rx], 79
+    mov word [ry], 39
     mov word [rw], 1
-    mov word [rh], 120
+    mov word [rh], 122
     mov byte [rc], 15
     call fill_rect
-    ; Bottom border
-    mov word [rx], 80
-    mov word [ry], 159
-    mov word [rw], 180
+
+    ; Outer shadow (Bottom/Right)
+    mov word [rx], 79
+    mov word [ry], 161
+    mov word [rw], 182
     mov word [rh], 1
     mov byte [rc], 0
     call fill_rect
-    ; Right border
-    mov word [rx], 259
-    mov word [ry], 40
+    mov word [rx], 261
+    mov word [ry], 39
     mov word [rw], 1
-    mov word [rh], 120
-    mov byte [rc], 0
-    call fill_rect
-    ; Separator
-    mov word [rx], 80
-    mov word [ry], 52
-    mov word [rw], 180
-    mov word [rh], 1
+    mov word [rh], 122
     mov byte [rc], 0
     call fill_rect
 
@@ -542,63 +529,54 @@ draw_desktop:
     mov byte [rc],9
     call fill_rect
 
+    ; --- Text Elements ---
     ; Top menu bar text
-    mov dh,0
-    mov dl,1
-    call set_cursor
-    mov si,str_menu
-    call print_str
+    mov word [rx], 8
+    mov word [ry], 1
+    mov byte [rc], 4
+    mov si, str_menu
+    call draw_text
 
     ; Window title
-    mov dh,5
-    mov dl,11
-    call set_cursor
-    mov si,str_window_title
-    call print_str
+    mov word [rx], 88
+    mov word [ry], 42
+    mov byte [rc], 8
+    mov si, str_window_title
+    call draw_text
 
     ; Window body text
-    mov dh,8
-    mov dl,11
-    call set_cursor
-    mov si,str_welcome1
-    call print_str
+    mov byte [rc], 4
+    mov word [rx], 88
+    mov word [ry], 60
+    mov si, str_welcome1
+    call draw_text
 
-    mov dh,10
-    mov dl,11
-    call set_cursor
-    mov si,str_welcome2
-    call print_str
+    mov word [ry], 76
+    mov si, str_welcome2
+    call draw_text
 
-    mov dh,12
-    mov dl,11
-    call set_cursor
-    mov si,str_welcome3
-    call print_str
+    mov word [ry], 92
+    mov si, str_welcome3
+    call draw_text
 
-    mov dh,17
-    mov dl,11
-    call set_cursor
-    mov si,str_press_key
-    call print_str
+    mov word [ry], 140
+    mov si, str_press_key
+    call draw_text
 
     ; Taskbar items text
-    mov dh,23
-    mov dl,14                       ; Aligned within button
-    call set_cursor
-    mov si,str_start
-    call print_str
+    mov byte [rc], 8
+    mov word [rx], 109
+    mov word [ry], 186
+    mov si, str_start
+    call draw_text
 
-    mov dh,23
-    mov dl,21                       ; Aligned
-    call set_cursor
-    mov si,str_search
-    call print_str
+    mov word [rx], 165
+    mov si, str_search
+    call draw_text
 
-    mov dh,23
-    mov dl,34                       ; Aligned
-    call set_cursor
-    mov si,str_clock
-    call print_str
+    mov word [rx], 276
+    mov si, str_clock
+    call draw_text
 
     call draw_cursor
 
@@ -766,6 +744,168 @@ fill_rect:
 
 
 ; ============================================================================
+; draw_bg_pattern: fills screen with color 1 and subtle dots of color 2
+; ============================================================================
+draw_bg_pattern:
+    pusha
+    mov al, 1
+    call clear_screen
+    
+    mov ax, 0xA000
+    mov es, ax
+    
+    mov word [ry], 0
+.y_loop:
+    mov word [rx], 0
+.x_loop:
+    mov ax, [rx]
+    test ax, 7
+    jnz .next_x
+    mov ax, [ry]
+    test ax, 7
+    jnz .next_x
+    
+    mov di, [ry]
+    mov bx, di
+    shl di, 8
+    shl bx, 6
+    add di, bx
+    add di, [rx]
+    mov byte [es:di], 2
+    
+.next_x:
+    inc word [rx]
+    cmp word [rx], 320
+    jb .x_loop
+    
+    inc word [ry]
+    cmp word [ry], 200
+    jb .y_loop
+    
+    popa
+    ret
+
+
+; ============================================================================
+; draw_icon: draws 16x16 icon from SI at (rx, ry)
+; ============================================================================
+draw_icon:
+    pusha
+    push es
+    mov ax, 0xA000
+    mov es, ax
+    
+    mov bx, [ry]
+    mov cx, 16
+.row:
+    push bx
+    mov di, bx
+    shl bx, 8
+    shl di, 6
+    add di, bx
+    add di, [rx]
+    
+    push cx
+    mov cx, 16
+.col:
+    lodsb
+    or al, al
+    jz .skip
+    mov [es:di], al
+.skip:
+    inc di
+    loop .col
+    pop cx
+    
+    pop bx
+    inc bx
+    loop .row
+    
+    pop es
+    popa
+    ret
+
+
+; ============================================================================
+; draw_text: draws string SI at (rx, ry) with color rc using BIOS 8x8 font
+; ============================================================================
+draw_text:
+    pusha
+    push es
+    
+    ; Save initial coordinates
+    mov ax, [rx]
+    mov [temp_x], ax
+    mov ax, [ry]
+    mov [temp_y], ax
+    
+    ; Get BIOS 8x8 font pointer
+    mov ax, 0x1130
+    mov bh, 0x03
+    int 0x10
+    ; es:bp points to font
+    
+    mov dx, es ; save font segment
+    
+.char_loop:
+    lodsb
+    or al, al
+    jz .done
+    
+    pusha
+    ; char in AL
+    mov bl, al
+    xor bh, bh
+    shl bx, 3 ; bx * 8
+    add bp, bx
+    
+    mov es, dx ; restore font segment
+    
+    mov cx, 8 ; 8 rows
+.row_loop:
+    mov al, [es:bp] ; get font byte
+    push cx
+    mov cx, 8 ; 8 pixels
+.pixel_loop:
+    test al, 0x80
+    jz .skip_pixel
+    
+    ; Draw pixel
+    pusha
+    mov ax, 0xA000
+    mov es, ax
+    mov di, [temp_y]
+    mov bx, di
+    shl di, 8
+    shl bx, 6
+    add di, bx
+    add di, [temp_x]
+    mov al, [rc]
+    mov [es:di], al
+    popa
+    
+.skip_pixel:
+    shl al, 1
+    inc word [temp_x]
+    loop .pixel_loop
+    
+    pop cx
+    sub word [temp_x], 8
+    inc word [temp_y]
+    inc bp
+    loop .row_loop
+    
+    popa
+    add word [temp_x], 8
+    jmp .char_loop
+
+.done:
+    pop es
+    popa
+    ret
+
+
+; ============================================================================
 set_cursor:
     mov ah,0x02
     mov bh,0
@@ -829,7 +969,44 @@ rc    db 0
 frame dw 0
 head  db 0
 dist  db 0
+temp_x dw 0
+temp_y dw 0
 
+this_pc_icon:
+    db 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    db 0, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 0
+    db 0, 15, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 15, 0
+    db 0, 15, 8, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 8, 15, 0
+    db 0, 15, 8, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 8, 15, 0
+    db 0, 15, 8, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 8, 15, 0
+    db 0, 15, 8, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 8, 15, 0
+    db 0, 15, 8, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 8, 15, 0
+    db 0, 15, 8, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 8, 15, 0
+    db 0, 15, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 15, 0
+    db 0, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 0
+    db 0, 0, 0, 0, 0, 0, 15, 15, 15, 15, 0, 0, 0, 0, 0, 0
+    db 0, 0, 0, 0, 0, 15, 15, 15, 15, 15, 15, 0, 0, 0, 0, 0
+    db 0, 0, 0, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 0, 0, 0
+    db 0, 0, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 0, 0
+    db 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+recycle_bin_icon:
+    db 0, 0, 0, 0, 0, 15, 15, 15, 15, 15, 15, 0, 0, 0, 0, 0
+    db 0, 0, 0, 0, 15, 15, 15, 15, 15, 15, 15, 15, 0, 0, 0, 0
+    db 0, 0, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 0, 0
+    db 0, 0, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 0, 0
+    db 0, 0, 0, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 0, 0, 0
+    db 0, 0, 0, 15, 8, 15, 8, 15, 8, 15, 8, 15, 15, 0, 0, 0
+    db 0, 0, 0, 15, 8, 15, 8, 15, 8, 15, 8, 15, 15, 0, 0, 0
+    db 0, 0, 0, 15, 8, 15, 8, 15, 8, 15, 8, 15, 15, 0, 0, 0
+    db 0, 0, 0, 15, 8, 15, 8, 15, 8, 15, 8, 15, 15, 0, 0, 0
+    db 0, 0, 0, 15, 8, 15, 8, 15, 8, 15, 8, 15, 15, 0, 0, 0
+    db 0, 0, 0, 15, 8, 15, 8, 15, 8, 15, 8, 15, 15, 0, 0, 0
+    db 0, 0, 0, 15, 8, 15, 8, 15, 8, 15, 8, 15, 15, 0, 0, 0
+    db 0, 0, 0, 0, 15, 15, 15, 15, 15, 15, 15, 15, 0, 0, 0, 0
+    db 0, 0, 0, 0, 15, 15, 15, 15, 15, 15, 15, 15, 0, 0, 0, 0
+    db 0, 0, 0, 0, 0, 15, 15, 15, 15, 15, 15, 0, 0, 0, 0, 0
+    db 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 
 ; ============================================================================
 ; Strings
