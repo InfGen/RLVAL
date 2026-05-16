@@ -143,26 +143,26 @@ KERNEL_START:
     ; Y < 180 is already true from previous check
     
     ; Check Tiles
-    ; Terminal Tile (X: 10-55, Y: 80-125)
+    ; File Explorer Tile (X: 10-55, Y: 80-125)
     mov ax, [mouseX]
     cmp ax, 10
-    jl .check_calc_tile
+    jl .check_term_tile
     cmp ax, 55
-    jg .check_calc_tile
+    jg .check_term_tile
     mov ax, [mouseY]
     cmp ax, 80
-    jl .check_calc_tile
+    jl .check_term_tile
     cmp ax, 125
-    jg .check_calc_tile
+    jg .check_term_tile
     
     mov byte [windowVisible], 1
-    mov byte [windowType], 1 ; Terminal
+    mov byte [windowType], 2 ; File Explorer
     mov byte [startMenuVisible], 0
     mov byte [need_redraw], 1
     jmp .done_mouse
 
-.check_calc_tile:
-    ; Calculator Tile (X: 65-110, Y: 80-125)
+.check_term_tile:
+    ; Terminal Tile (X: 65-110, Y: 80-125)
     mov ax, [mouseX]
     cmp ax, 65
     jl .done_mouse ; Inside menu but no tile
@@ -175,7 +175,7 @@ KERNEL_START:
     jg .done_mouse
     
     mov byte [windowVisible], 1
-    mov byte [windowType], 2 ; Calculator
+    mov byte [windowType], 1 ; Terminal
     mov byte [startMenuVisible], 0
     mov byte [need_redraw], 1
     jmp .done_mouse
@@ -832,14 +832,6 @@ draw_desktop:
 
     call draw_bg_pattern
 
-    ; Top menu bar
-    mov word [rx],0
-    mov word [ry],0
-    mov word [rw],320
-    mov word [rh],10
-    mov byte [rc],2
-    call fill_rect
-
     ; --- Desktop Icons ---
     ; This PC icon
     mov word [rx], 28
@@ -889,42 +881,41 @@ draw_desktop:
     call fill_rect
 
     ; Start button
-    mov word [rx],0
-    mov word [ry],180
-    mov word [rw],36
-    mov word [rh],20
-    mov byte [rc],5
-    call fill_rect
-
-    ; Windows logo in Start button
-    mov byte [rc], 8
-    mov word [rw], 6
-    mov word [rh], 6
-    mov word [rx], 11
+    mov word [rx], 5
     mov word [ry], 184
+    mov word [rw], 12
+    mov word [rh], 12
+    mov byte [rc], 5
     call fill_rect
-    mov word [rx], 19
+    
+    mov byte [rc], 8 ; White logo
+    mov word [rw], 5
+    mov word [rh], 5
+    mov word [rx], 5
     mov word [ry], 184
     call fill_rect
     mov word [rx], 11
-    mov word [ry], 191
+    mov word [ry], 184
     call fill_rect
-    mov word [rx], 19
-    mov word [ry], 191
+    mov word [rx], 5
+    mov word [ry], 190
+    call fill_rect
+    mov word [rx], 11
+    mov word [ry], 190
     call fill_rect
 
     ; Search box
-    mov word [rx],36
+    mov word [rx],25
     mov word [ry],182
-    mov word [rw],80
+    mov word [rw],100
     mov word [rh],16
-    mov byte [rc],10 ; White/Light gray
+    mov byte [rc],7 ; Slightly lighter
     call fill_rect
 
-    mov word [rx], 40
+    mov word [rx], 30
     mov word [ry], 186
     mov byte [rc], 4 ; Gray text
-    mov si, str_search
+    mov si, str_search_new
     call draw_text
 
     ; System Tray
@@ -982,14 +973,14 @@ draw_desktop:
     cmp byte [windowType], 1
     je .term_title
     cmp byte [windowType], 2
-    je .calc_title
+    je .explorer_title
     mov si, str_window_title
     jmp .draw_t
 .term_title:
     mov si, str_term_title
     jmp .draw_t
-.calc_title:
-    mov si, str_calc_title
+.explorer_title:
+    mov si, str_explorer_title
 .draw_t:
     call draw_text
 
@@ -1019,7 +1010,7 @@ draw_desktop:
     cmp byte [windowType], 1
     je .draw_terminal_content
     cmp byte [windowType], 2
-    je .draw_calc_content
+    je .draw_explorer_content
 
     ; Welcome content
     mov byte [rc], 4
@@ -1051,15 +1042,85 @@ draw_desktop:
     call draw_text
     jmp .skip_window
 
-.draw_calc_content:
-    mov byte [rc], 4
+.draw_explorer_content:
+    ; Sidebar (Left)
     mov ax, [windowX]
-    add ax, 8
+    inc ax
     mov [rx], ax
     mov ax, [windowY]
-    add ax, 40
+    add ax, 22
     mov [ry], ax
-    mov si, str_calc_text
+    mov word [rw], 50
+    mov word [rh], 117
+    mov byte [rc], 14 ; Sidebar Gray
+    call fill_rect
+    
+    ; Sidebar items
+    mov ax, [windowX]
+    add ax, 5
+    mov [rx], ax
+    mov ax, [windowY]
+    add ax, 30
+    mov [ry], ax
+    mov byte [rc], 8
+    mov si, str_home
+    call draw_text
+    
+    add word [ry], 15
+    mov si, str_desktop_side
+    call draw_text
+    
+    add word [ry], 15
+    mov si, str_documents
+    call draw_text
+
+    ; Navigation Bar (Top)
+    mov ax, [windowX]
+    add ax, 51
+    mov [rx], ax
+    mov ax, [windowY]
+    add ax, 22
+    mov [ry], ax
+    mov word [rw], 148
+    mov word [rh], 15
+    mov byte [rc], 7 ; Path bar gray
+    call fill_rect
+    
+    mov ax, [windowX]
+    add ax, 55
+    mov [rx], ax
+    mov ax, [windowY]
+    add ax, 26
+    mov [ry], ax
+    mov byte [rc], 4
+    mov si, str_path
+    call draw_text
+
+    ; File List Area
+    mov ax, [windowX]
+    add ax, 51
+    mov [rx], ax
+    mov ax, [windowY]
+    add ax, 37
+    mov [ry], ax
+    mov word [rw], 148
+    mov word [rh], 102
+    mov byte [rc], 0 ; Black
+    call fill_rect
+    
+    ; File items
+    mov ax, [windowX]
+    add ax, 60
+    mov [rx], ax
+    mov ax, [windowY]
+    add ax, 45
+    mov [ry], ax
+    mov byte [rc], 8
+    mov si, str_file1
+    call draw_text
+    
+    add word [ry], 12
+    mov si, str_file2
     call draw_text
     jmp .skip_window
 
@@ -1113,7 +1174,7 @@ draw_start_menu:
     mov byte [rc], 6 ; Start Menu Gray
     call fill_rect
     
-    ; "Terminal" Tile
+    ; "File Explorer" Tile
     mov word [rx], 10
     mov word [ry], 80
     mov word [rw], 45
@@ -1124,10 +1185,10 @@ draw_start_menu:
     mov word [rx], 12
     mov word [ry], 115
     mov byte [rc], 8
-    mov si, str_terminal_small
+    mov si, str_explorer_small
     call draw_text
     
-    ; "Calculator" Tile
+    ; "Terminal" Tile
     mov word [rx], 65
     mov word [ry], 80
     mov word [rw], 45
@@ -1138,7 +1199,7 @@ draw_start_menu:
     mov word [rx], 67
     mov word [ry], 115
     mov byte [rc], 8
-    mov si, str_calc_small
+    mov si, str_terminal_small
     call draw_text
     
     popa
@@ -1213,7 +1274,7 @@ install_palette:
     out dx,al
     inc dx
     mov si,palette_data
-    mov cx,16*3
+    mov cx,32*3
 .next:
     lodsb
     out dx,al
@@ -1222,22 +1283,31 @@ install_palette:
     ret
 
 palette_data:
-    db  0,  0,  0      ; 0: Black
-    db  0, 18, 38      ; 1: Dark Blue (Gradient Bottom)
-    db 10, 31, 55      ; 2: Mid Blue (Gradient Top)
+    db  0,  0,  0      ; 0: Black / File List
+    db  2,  2,  4      ; 1: Dark Blue/Gray (Gradient Bottom)
+    db  5,  5,  8      ; 2: Mid Blue/Gray (Gradient Top)
     db  0, 48, 86      ; 3: Windows Blue (Tiles)
-    db 50, 50, 50      ; 4: Medium Gray
-    db  5,  5,  5      ; 5: Dark Gray (Taskbar)
-    db  8,  8,  8      ; 6: Start Menu Gray
-    db 12, 12, 12      ; 7: Title Bar Gray
+    db 40, 40, 40      ; 4: Medium Gray
+    db 10, 10, 10      ; 5: Dark Gray (Taskbar)
+    db 15, 15, 15      ; 6: Start Menu Gray
+    db 20, 20, 20      ; 7: Title Bar Gray
     db 63, 63, 63      ; 8: White (Logo, Text)
     db 60,  0,  0      ; 9: Close Red
     db 63, 63, 63      ; 10: Search Box (White)
     db  0, 24, 48      ; 11: Boot Spinner (Mid Blue)
     db  0, 15, 30      ; 12: Boot Spinner (Dim Blue)
     db  0,  8, 16      ; 13: Boot Spinner (Darker Blue)
-    db 20, 20, 20      ; 14: Unused
-    db 40, 40, 40      ; 15: Unused
+    db 25, 25, 25      ; 14: Sidebar Gray
+    db 45, 45, 45      ; 15: Highlight Gray
+    ; Rainbow Colors (16-22)
+    db 63,  0,  0      ; 16: Red
+    db 63, 31,  0      ; 17: Orange
+    db 63, 63,  0      ; 18: Yellow
+    db  0, 63,  0      ; 19: Green
+    db  0,  0, 63      ; 20: Blue
+    db 31,  0, 63      ; 21: Indigo
+    db 63,  0, 63      ; 22: Violet
+    times (32-23)*3 db 0
 
 
 ; ============================================================================
@@ -1310,7 +1380,7 @@ fill_rect:
 
 
 ; ============================================================================
-; draw_bg_pattern: fills screen with a vertical blue gradient and Hero logo
+; draw_bg_pattern: fills screen with a vertical gradient and Diamond logo
 ; ============================================================================
 draw_bg_pattern:
     pusha
@@ -1320,59 +1390,119 @@ draw_bg_pattern:
     xor di, di
     
     ; Vertical gradient from index 2 (top) to index 1 (bottom)
-    ; 200 rows. We'll use index 2 for top 100 rows and index 1 for bottom 100 rows
-    ; Or better: actually interpolate? Mode 13h only has 256 colors.
-    ; Let's just do a simple split or a few bands.
-    
     mov al, 2 ; Top color
-    mov cx, 320 * 100 / 2
+    mov cx, 320 * 60 / 2
     rep stosw
     
     mov al, 1 ; Bottom color
-    mov cx, 320 * 100 / 2
+    mov cx, 320 * 140 / 2
     rep stosw
     
-    call draw_hero_logo
+    call draw_diamond_logo
     
     pop es
     popa
     ret
 
-draw_hero_logo:
+draw_diamond_logo:
     pusha
-    ; Draw the 4 panes of the Windows logo
-    ; Centered roughly. Screen is 320x200.
-    ; Pane size: 30x30 with small gap
+    ; Top-Right edge: (160, 60) to (200, 100)
+    mov cx, 40
+.tr:
+    push cx
+    mov ax, 160
+    add ax, 40
+    sub ax, cx
+    mov [rx], ax
+    mov ax, 60
+    add ax, 40
+    sub ax, cx
+    mov [ry], ax
+    mov word [rw], 2
+    mov word [rh], 2
+    mov ax, cx
+    xor dx, dx
+    mov bx, 7
+    div bx
+    add dl, 16
+    mov [rc], dl
+    call fill_rect
+    pop cx
+    loop .tr
+
+    ; Bottom-Right edge: (200, 100) to (160, 140)
+    mov cx, 40
+.br:
+    push cx
+    mov ax, 160
+    add ax, cx
+    mov [rx], ax
+    mov ax, 140
+    sub ax, cx
+    mov [ry], ax
+    mov word [rw], 2
+    mov word [rh], 2
+    mov ax, cx
+    xor dx, dx
+    mov bx, 7
+    div bx
+    add dl, 16
+    mov [rc], dl
+    call fill_rect
+    pop cx
+    loop .br
+
+    ; Bottom-Left edge: (160, 140) to (120, 100)
+    mov cx, 40
+.bl:
+    push cx
+    mov ax, 160
+    sub ax, cx
+    mov [rx], ax
+    mov ax, 140
+    sub ax, cx
+    mov [ry], ax
+    mov word [rw], 2
+    mov word [rh], 2
+    mov ax, cx
+    xor dx, dx
+    mov bx, 7
+    div bx
+    add dl, 16
+    mov [rc], dl
+    call fill_rect
+    pop cx
+    loop .bl
+
+    ; Top-Left edge: (120, 100) to (160, 60)
+    mov cx, 40
+.tl:
+    push cx
+    mov ax, 160
+    sub ax, cx
+    mov [rx], ax
+    mov ax, 60
+    add ax, cx
+    mov [ry], ax
+    mov word [rw], 2
+    mov word [rh], 2
+    mov ax, cx
+    xor dx, dx
+    mov bx, 7
+    div bx
+    add dl, 16
+    mov [rc], dl
+    call fill_rect
+    pop cx
+    loop .tl
+
+    ; Draw 'R' in center
+    mov word [rx], 157
+    mov word [ry], 96
     mov byte [rc], 8 ; White
-    
-    ; Top-Left
-    mov word [rx], 128
-    mov word [ry], 70
-    mov word [rw], 30
-    mov word [rh], 30
-    call fill_rect
-    
-    ; Top-Right
-    mov word [rx], 162
-    mov word [ry], 68
-    mov word [rw], 32
-    mov word [rh], 32
-    call fill_rect
-    
-    ; Bottom-Left
-    mov word [rx], 128
-    mov word [ry], 104
-    mov word [rw], 30
-    mov word [rh], 30
-    call fill_rect
-    
-    ; Bottom-Right
-    mov word [rx], 162
-    mov word [ry], 104
-    mov word [rw], 32
-    mov word [rh], 32
-    call fill_rect
-    
+    mov si, str_R
+    call draw_text
+
     popa
     ret
 
@@ -1660,25 +1790,30 @@ terminal_icon:
 ; ============================================================================
 str_title        db "RLVAL OS",0
 str_footer       db "RLVAL Corporation",0
-str_menu         db "RLVAL OS  File  Edit  View  Help",0
 str_window_title db "Welcome",0
 str_welcome1     db "Hello, world!",0
 str_welcome2     db "RLVAL OS booted.",0
 str_welcome3     db "VGA 13h (320x200).",0
 str_press_key    db "[Press any key to reboot]",0
 str_start        db "Start",0
-str_search       db "Search",0
+str_search_new   db "Type here to search",0
 str_this_pc      db "This PC",0
 str_recycle      db "Recycle",0
 str_terminal     db "Terminal",0
 str_terminal_small db "Term",0
-str_calc_small     db "Calc",0
+str_explorer_small db "File",0
 str_clock        db "12:34",0
 str_term_title   db "Command Prompt",0
-str_calc_title   db "Calculator",0
-str_calc_text    db "0",0
+str_explorer_title db "File Explorer",0
+str_home         db "Home",0
+str_desktop_side db "Desktop",0
+str_documents    db "Documents",0
+str_path         db "C:\Users\Admin",0
+str_file1        db "MyData.txt",0
+str_file2        db "RLVAL_OS.bin",0
 str_prompt       db "C:\> ",0
 str_x            db "X",0
+str_R            db "R",0
 
 ; BIOS Menu Strings
 str_bios_title   db "Choose an option",0
