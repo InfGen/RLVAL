@@ -43,7 +43,7 @@ KERNEL_START:
 .skip_bios_menu:
 
     ; ---- Boot screen ----
-    mov al, 1
+    mov al, 0
     call clear_screen
 
     ; Wordmark "RLVAL OS" using BIOS 8x8 font (text via INT 10h teletype).
@@ -114,104 +114,47 @@ KERNEL_START:
     jnz .continue_drag
     
     ; Left button just pressed - Hit detection
-    ; 1. Check Terminal Window (on top)
-    cmp byte [termVisible], 0
-    je .check_welcome_window
-    
-    ; Close button (Terminal)
-    mov ax, [mouseX]
-    mov bx, [termX]
-    add bx, 190
-    cmp ax, bx
-    jl .check_term_title
-    add bx, 6
-    cmp ax, bx
-    jg .check_term_title
-    mov ax, [mouseY]
-    mov bx, [termY]
-    add bx, 3
-    cmp ax, bx
-    jl .check_term_title
-    add bx, 6
-    cmp ax, bx
-    jg .check_term_title
-    
-    mov byte [termVisible], 0
-    mov byte [need_redraw], 1
-    jmp .done_mouse
-
-.check_term_title:
-    mov ax, [mouseX]
-    mov bx, [termX]
-    cmp ax, bx
-    jl .check_welcome_window
-    add bx, 200
-    cmp ax, bx
-    jg .check_welcome_window
-    mov ax, [mouseY]
-    mov bx, [termY]
-    cmp ax, bx
-    jl .check_welcome_window
-    add bx, 12
-    cmp ax, bx
-    jg .check_welcome_window
-    
-    mov byte [termDragging], 1
-    mov ax, [mouseX]
-    sub ax, [termX]
-    mov [dragOffsetX], ax
-    mov ax, [mouseY]
-    sub ax, [termY]
-    mov [dragOffsetY], ax
-    jmp .done_mouse
-
-.check_welcome_window:
+    ; 1. Check Window (if visible)
     cmp byte [windowVisible], 0
     je .check_icons
     
-    ; Check Close button (relative X: 174-180, Y: 3-9)
+    ; Close button
     mov ax, [mouseX]
     mov bx, [windowX]
-    add bx, 174
+    add bx, 175
     cmp ax, bx
-    jl .check_title_hit
-    add bx, 6
+    jl .check_window_title
+    add bx, 25
     cmp ax, bx
-    jg .check_title_hit
-    
+    jg .check_window_title
     mov ax, [mouseY]
     mov bx, [windowY]
-    add bx, 3
     cmp ax, bx
-    jl .check_title_hit
-    add bx, 6
+    jl .check_window_title
+    add bx, 22
     cmp ax, bx
-    jg .check_title_hit
+    jg .check_window_title
     
-    ; Hit Close button!
     mov byte [windowVisible], 0
     mov byte [need_redraw], 1
     jmp .done_mouse
-    
-.check_title_hit:
-    ; Check Title bar (relative X: 0-180, Y: 0-12)
+
+.check_window_title:
     mov ax, [mouseX]
     mov bx, [windowX]
     cmp ax, bx
     jl .check_icons
-    add bx, 180
+    add bx, 200
     cmp ax, bx
     jg .check_icons
-    
     mov ax, [mouseY]
     mov bx, [windowY]
     cmp ax, bx
     jl .check_icons
-    add bx, 12
+    add bx, 22
     cmp ax, bx
     jg .check_icons
     
-    ; Hit Title bar! Start dragging
     mov byte [isDragging], 1
     mov ax, [mouseX]
     sub ax, [windowX]
@@ -225,26 +168,61 @@ KERNEL_START:
     ; Check Terminal Icon (X: 28-44, Y: 100-116)
     mov ax, [mouseX]
     cmp ax, 28
+    jl .check_this_pc
+    cmp ax, 44
+    jg .check_this_pc
+    mov ax, [mouseY]
+    cmp ax, 100
+    jl .check_this_pc
+    cmp ax, 116
+    jg .check_this_pc
+    
+    mov byte [windowVisible], 1
+    mov byte [windowType], 1 ; Terminal
+    mov byte [need_redraw], 1
+    jmp .done_mouse
+
+.check_this_pc:
+    ; Check This PC Icon (X: 28-44, Y: 20-36)
+    mov ax, [mouseX]
+    cmp ax, 28
+    jl .check_recycle
+    cmp ax, 44
+    jg .check_recycle
+    mov ax, [mouseY]
+    cmp ax, 20
+    jl .check_recycle
+    cmp ax, 36
+    jg .check_recycle
+    
+    mov byte [windowVisible], 1
+    mov byte [windowType], 0 ; Welcome/This PC
+    mov byte [need_redraw], 1
+    jmp .done_mouse
+
+.check_recycle:
+    ; Check Recycle Bin Icon (X: 28-44, Y: 60-76)
+    mov ax, [mouseX]
+    cmp ax, 28
     jl .done_mouse
     cmp ax, 44
     jg .done_mouse
     mov ax, [mouseY]
-    cmp ax, 100
+    cmp ax, 60
     jl .done_mouse
-    cmp ax, 116
+    cmp ax, 76
     jg .done_mouse
     
-    mov byte [termVisible], 1
+    mov byte [windowVisible], 1
+    mov byte [windowType], 0 ; Recycle
     mov byte [need_redraw], 1
     jmp .done_mouse
 
 .continue_drag:
-    cmp byte [termDragging], 1
-    je .do_term_drag
     cmp byte [isDragging], 1
     jne .done_mouse
     
-    ; Update Welcome window position
+    ; Update window position
     mov ax, [mouseX]
     sub ax, [dragOffsetX]
     mov [windowX], ax
@@ -254,19 +232,9 @@ KERNEL_START:
     mov byte [need_redraw], 1
     jmp .done_mouse
 
-.do_term_drag:
-    mov ax, [mouseX]
-    sub ax, [dragOffsetX]
-    mov [termX], ax
-    mov ax, [mouseY]
-    sub ax, [dragOffsetY]
-    mov [termY], ax
-    mov byte [need_redraw], 1
-    jmp .done_mouse
-
 .not_dragging:
     mov byte [isDragging], 0
-    mov byte [termDragging], 0
+
 
 .done_mouse:
     mov al, [mouseButtons]
@@ -278,7 +246,9 @@ KERNEL_START:
     int 0x16
     
     ; If Terminal is visible, handle input there
-    cmp byte [termVisible], 1
+    cmp byte [windowVisible], 1
+    jne .reboot_check
+    cmp byte [windowType], 1
     jne .reboot_check
     
     ; Handle Enter (process command)
@@ -307,7 +277,7 @@ KERNEL_START:
     mov byte [di+1], 0 ; Null terminate
     mov byte [need_redraw], 1
     jmp .do_render
-
+    
 .handle_backspace:
     mov bx, [term_buffer_len]
     or bx, bx
@@ -319,7 +289,7 @@ KERNEL_START:
     mov byte [di], 0
     mov byte [need_redraw], 1
     jmp .do_render
-
+    
 .process_command:
     ; check 'exit'
     mov si, term_buffer
@@ -333,9 +303,10 @@ KERNEL_START:
     jne .check_cls
     cmp byte [si+4], 0
     jne .check_cls
-    mov byte [termVisible], 0
+    mov byte [windowVisible], 0
     mov byte [need_redraw], 1
     jmp .clear_buffer
+
 
 .check_cls:
     ; check 'cls'
@@ -544,7 +515,7 @@ draw_spinner:
     mov word [ry], 114
     mov word [rw], 32
     mov word [rh], 32
-    mov byte [rc], 1                ; bg color
+    mov byte [rc], 0                ; bg color (black)
     call fill_rect
 
     ; head = frame % 8
@@ -845,282 +816,198 @@ draw_desktop:
     mov byte [rc],5
     call fill_rect
 
-    ; Centered Start button
-    mov word [rx],100
-    mov word [ry],184
-    mov word [rw],58
-    mov word [rh],12
-    mov byte [rc],3
-    call draw_rect_3d
+    ; Start button (Left-aligned)
+    mov word [rx],2
+    mov word [ry],178
+    mov word [rw],32
+    mov word [rh],20
+    mov byte [rc],5 ; Flat, same as taskbar or slightly different? Let's use 5
+    call fill_rect
 
-    ; Start button icon (4 white squares)
+    ; Start button icon (4 white squares) - Windows 10 style
     mov byte [rc], 8
-    mov word [rw], 2
-    mov word [rh], 2
+    mov word [rw], 4
+    mov word [rh], 4
     
-    mov word [rx], 104
-    mov word [ry], 188
+    mov word [rx], 11
+    mov word [ry], 184
     call fill_rect
     
-    mov word [rx], 107
-    mov word [ry], 188
+    mov word [rx], 16
+    mov word [ry], 184
     call fill_rect
     
-    mov word [rx], 104
-    mov word [ry], 191
+    mov word [rx], 11
+    mov word [ry], 189
     call fill_rect
     
-    mov word [rx], 107
-    mov word [ry], 191
+    mov word [rx], 16
+    mov word [ry], 189
     call fill_rect
 
-    ; Search button next to Start
-    mov word [rx],162
-    mov word [ry],184
-    mov word [rw],54
-    mov word [rh],12
-    mov byte [rc],2
-    call draw_rect_3d
+    ; Search box next to Start
+    mov word [rx],36
+    mov word [ry],178
+    mov word [rw],80
+    mov word [rh],20
+    mov byte [rc],10
+    call fill_rect
 
-    ; Clock area
-    mov word [rx],270
-    mov word [ry],184
-    mov word [rw],46
-    mov word [rh],12
-    mov byte [rc],2
-    call draw_rect_3d
+    ; Search icon (just a circle/magnifier or text)
+    mov word [rx], 42
+    mov word [ry], 184
+    mov byte [rc], 8
+    mov si, str_search
+    call draw_text
 
-    ; Window shadow (1px offset)
+    ; Clock area (Right-aligned)
+    mov word [rx],280
+    mov word [ry],178
+    mov word [rw],40
+    mov word [rh],20
+    mov byte [rc],5
+    call fill_rect
+
+    mov word [rx], 285
+    mov word [ry], 184
+    mov byte [rc], 8
+    mov si, str_clock
+    call draw_text
+
+    ; Window shadow (none for flat Windows 10 look usually, but let's keep it simple or remove)
     cmp byte [windowVisible], 0
     je .skip_window
 
-    mov ax, [windowX]
-    inc ax
-    mov [rx], ax
-    mov ax, [windowY]
-    inc ax
-    mov [ry], ax
-    mov word [rw], 180
-    mov word [rh], 120
-    mov byte [rc], 0 ; Black
-    call fill_rect
-
-    ; Window body
+    ; Window body (Flat)
     mov ax, [windowX]
     mov [rx], ax
     mov ax, [windowY]
     mov [ry], ax
-    mov word [rw], 180
-    mov word [rh], 120
+    mov word [rw], 200
+    mov word [rh], 140
     mov byte [rc], 6
-    call draw_rect_3d
-
-    ; Title bar
-    mov ax, [windowX]
-    mov [rx], ax
-    mov ax, [windowY]
-    mov [ry], ax
-    mov word [rw], 180
-    mov word [rh], 12
-    mov byte [rc], 7
-    call draw_rect_3d
-
-    ; Separator line between title bar and body
-    mov ax, [windowX]
-    inc ax
-    mov [rx], ax
-    mov ax, [windowY]
-    add ax, 12
-    mov [ry], ax
-    mov word [rw], 178
-    mov word [rh], 1
-    mov byte [rc], 0 ; Black
     call fill_rect
 
-    ; Title bar buttons: Minimize, Maximize, Close
-    ; Minimize
+    ; Title bar (Flat, Dark)
     mov ax, [windowX]
-    add ax, 154
     mov [rx], ax
     mov ax, [windowY]
-    add ax, 3
     mov [ry], ax
-    mov word [rw], 6
-    mov word [rh], 6
-    mov byte [rc], 3
-    call draw_rect_3d
-
-    ; Maximize
-    mov ax, [windowX]
-    add ax, 164
-    mov [rx], ax
-    mov ax, [windowY]
-    add ax, 3
-    mov [ry], ax
-    mov word [rw], 6
-    mov word [rh], 6
-    mov byte [rc], 3
-    call draw_rect_3d
-
-    ; Close (Red)
-    mov ax, [windowX]
-    add ax, 174
-    mov [rx], ax
-    mov ax, [windowY]
-    add ax, 3
-    mov [ry], ax
-    mov word [rw], 6
-    mov word [rh], 6
-    mov byte [rc], 9
-    call draw_rect_3d
-
-    ; --- Text Elements ---
-    ; Top menu bar text
-    mov word [rx], 8
-    mov word [ry], 1
-    mov byte [rc], 4
-    mov si, str_menu
-    call draw_text
+    mov word [rw], 200
+    mov word [rh], 22
+    mov byte [rc], 7
+    call fill_rect
 
     ; Window title
     mov ax, [windowX]
     add ax, 8
     mov [rx], ax
     mov ax, [windowY]
-    add ax, 2
+    add ax, 6
     mov [ry], ax
     mov byte [rc], 8
+    
+    cmp byte [windowType], 1
+    je .term_title
     mov si, str_window_title
+    jmp .draw_t
+.term_title:
+    mov si, str_term_title
+.draw_t:
     call draw_text
 
-    ; Window body text
+    ; Close button (Red rectangle with X)
+    mov ax, [windowX]
+    add ax, 175
+    mov [rx], ax
+    mov ax, [windowY]
+    mov [ry], ax
+    mov word [rw], 25
+    mov word [rh], 22
+    mov byte [rc], 9 ; Red
+    call fill_rect
+    
+    ; 'X' on Close button
+    mov ax, [windowX]
+    add ax, 185
+    mov [rx], ax
+    mov ax, [windowY]
+    add ax, 6
+    mov [ry], ax
+    mov byte [rc], 8 ; White
+    mov si, str_x
+    call draw_text
+
+    ; --- Window Content ---
+    cmp byte [windowType], 1
+    je .draw_terminal_content
+
+    ; Welcome content
     mov byte [rc], 4
     mov ax, [windowX]
     add ax, 8
     mov [rx], ax
     mov ax, [windowY]
-    add ax, 20
+    add ax, 40
     mov [ry], ax
     mov si, str_welcome1
     call draw_text
 
     mov ax, [windowY]
-    add ax, 36
+    add ax, 56
     mov [ry], ax
     mov si, str_welcome2
     call draw_text
 
     mov ax, [windowY]
-    add ax, 52
+    add ax, 72
     mov [ry], ax
     mov si, str_welcome3
     call draw_text
 
     mov ax, [windowY]
-    add ax, 100
+    add ax, 120
     mov [ry], ax
     mov si, str_press_key
     call draw_text
+    jmp .skip_window
 
-    .skip_window:
-    ; Taskbar items text
-    mov byte [rc], 8
-    mov word [rx], 109
-    mov word [ry], 186
-    mov si, str_start
-    call draw_text
-
-    mov word [rx], 165
-    mov si, str_search
-    call draw_text
-
-    mov word [rx], 276
-    mov si, str_clock
-    call draw_text
-
-    ; --- Terminal Window ---
-    cmp byte [termVisible], 0
-    je .skip_terminal
-
-    ; Shadow
-    mov ax, [termX]
-    inc ax
+.draw_terminal_content:
+    ; Terminal Background
+    mov ax, [windowX]
+    add ax, 2
     mov [rx], ax
-    mov ax, [termY]
-    inc ax
+    mov ax, [windowY]
+    add ax, 22
     mov [ry], ax
-    mov word [rw], 200
-    mov word [rh], 120
-    mov byte [rc], 0
+    mov word [rw], 196
+    mov word [rh], 116
+    mov byte [rc], 0 ; Black
     call fill_rect
 
-    ; Body
-    mov ax, [termX]
-    mov [rx], ax
-    mov ax, [termY]
-    mov [ry], ax
-    mov word [rw], 200
-    mov word [rh], 120
-    mov byte [rc], 0 ; Black background for terminal
-    call draw_rect_3d
-
-    ; Title bar
-    mov ax, [termX]
-    mov [rx], ax
-    mov ax, [termY]
-    mov [ry], ax
-    mov word [rw], 200
-    mov word [rh], 12
-    mov byte [rc], 7
-    call draw_rect_3d
-
-    ; Title text
-    mov ax, [termX]
-    add ax, 8
-    mov [rx], ax
-    mov ax, [termY]
-    add ax, 2
-    mov [ry], ax
-    mov byte [rc], 8
-    mov si, str_term_title
-    call draw_text
-
-    ; Close button
-    mov ax, [termX]
-    add ax, 190
-    mov [rx], ax
-    mov ax, [termY]
-    add ax, 3
-    mov [ry], ax
-    mov word [rw], 6
-    mov word [rh], 6
-    mov byte [rc], 9
-    call draw_rect_3d
-
-    ; Terminal Content
-    mov ax, [termX]
+    ; Prompt
+    mov ax, [windowX]
     add ax, 5
     mov [rx], ax
-    mov ax, [termY]
-    add ax, 20
+    mov ax, [windowY]
+    add ax, 30
     mov [ry], ax
-    mov byte [rc], 3 ; Accent blue for prompt
+    mov byte [rc], 3 ; Accent blue
     mov si, str_prompt
     call draw_text
 
     ; Current buffer
-    mov ax, [termX]
-    add ax, 20
+    mov ax, [windowX]
+    add ax, 45 ; Offset for "C:\> "
     mov [rx], ax
     mov si, term_buffer
-    mov byte [rc], 8 ; White text
+    mov byte [rc], 8 ; White
     call draw_text
 
-.skip_terminal:
+    .skip_window:
     popa
     ret
-
-
+    
 ; ============================================================================
 ; draw_cursor: small white arrow at (rx, ry)
 draw_cursor:
@@ -1200,19 +1087,19 @@ install_palette:
 
 palette_data:
     db  0,  0,  0      ; 0 black
-    db  7,  7, 11      ; 1 background  (#1e1e2e)
-    db 10, 10, 15      ; 2 panel       (#2a2a3d)
-    db 30, 40, 61      ; 3 accent blue (#7aa2f7) - bright
+    db  0, 30, 53      ; 1 background blue (#0078D7)
+    db 10, 10, 15      ; 2 panel
+    db 30, 40, 61      ; 3 accent blue
     db 51, 53, 61      ; 4 text light
-    db  6,  6,  9      ; 5 taskbar
+    db  4,  4,  4      ; 5 dark taskbar
     db 12, 12, 17      ; 6 window bg
-    db 17, 17, 22      ; 7 title bar
-    db 63, 63, 63      ; 8 white (spinner head)
+    db  8,  8,  8      ; 7 dark title bar
+    db 63, 63, 63      ; 8 white
     db 63,  5,  5      ; 9 close red
-    db  0, 30, 53      ; 10 Windows Blue
-    db 20, 27, 40      ; 11 mid blue (spinner trail-1)
-    db 14, 18, 28      ; 12 dim blue (spinner trail-2)
-    db 10, 13, 20      ; 13 very dim blue (spinner trail-3+)
+    db 12, 12, 12      ; 10 search box
+    db 20, 27, 40      ; 11 mid blue
+    db 14, 18, 28      ; 12 dim blue
+    db 10, 13, 20      ; 13 very dim blue
     db 30, 30, 35      ; 14
     db 45, 45, 50      ; 15
 
@@ -1293,30 +1180,6 @@ draw_bg_pattern:
     pusha
     mov al, 1
     call clear_screen
-
-    mov ax, [draw_seg]
-    mov es, ax
-
-    mov word [ry], 0
-.y_loop:
-    mov word [rx], 0
-.x_loop:
-    mov di, [ry]
-    mov bx, di
-    shl di, 8
-    shl bx, 6
-    add di, bx
-    add di, [rx]
-    mov byte [es:di], 2
-
-    add word [rx], 8
-    cmp word [rx], 320
-    jb .x_loop
-
-    add word [ry], 8
-    cmp word [ry], 200
-    jb .y_loop
-
     popa
     ret
 
@@ -1527,6 +1390,7 @@ mouse_updated   db 0
 windowX         dw 80
 windowY         dw 40
 windowVisible   db 1
+windowType      db 0 ; 0=Welcome, 1=Terminal
 isDragging      db 0
 dragOffsetX     dw 0
 dragOffsetY     dw 0
@@ -1534,8 +1398,6 @@ dragOffsetY     dw 0
 ; Terminal State
 termX           dw 40
 termY           dw 30
-termVisible     db 0
-termDragging    db 0
 term_buffer     times 64 db 0
 term_buffer_len dw 0
 
@@ -1617,7 +1479,8 @@ str_recycle      db "Recycle",0
 str_terminal     db "Terminal",0
 str_clock        db "12:34",0
 str_term_title   db "Command Prompt",0
-str_prompt       db "> ",0
+str_prompt       db "C:\> ",0
+str_x            db "X",0
 
 ; BIOS Menu Strings
 str_bios_title   db "Choose an option",0
