@@ -215,6 +215,37 @@ draw_desktop:
     mov byte [rc],2
     call fill_rect
 
+    ; --- Desktop Icons ---
+    ; This PC icon
+    mov word [rx], 12
+    mov word [ry], 20
+    mov word [rw], 16
+    mov word [rh], 16
+    mov byte [rc], 3
+    call fill_rect
+    
+    ; This PC text
+    mov dh, 5
+    mov dl, 1
+    call set_cursor
+    mov si, str_this_pc
+    call print_str
+
+    ; Recycle Bin icon
+    mov word [rx], 12
+    mov word [ry], 60
+    mov word [rw], 16
+    mov word [rh], 16
+    mov byte [rc], 3
+    call fill_rect
+
+    ; Recycle text
+    mov dh, 10
+    mov dl, 1
+    call set_cursor
+    mov si, str_recycle
+    call print_str
+
     ; Taskbar
     mov word [rx],0
     mov word [ry],184
@@ -223,12 +254,20 @@ draw_desktop:
     mov byte [rc],5
     call fill_rect
 
-    ; Start button (centered on Windows 11 — but we'll keep on left for clarity)
-    mov word [rx],4
+    ; Centered Start button (Win11 style)
+    mov word [rx],110
     mov word [ry],188
-    mov word [rw],32
+    mov word [rw],44
     mov word [rh],8
     mov byte [rc],3
+    call fill_rect
+
+    ; Search button next to Start
+    mov word [rx],159
+    mov word [ry],188
+    mov word [rw],48
+    mov word [rh],8
+    mov byte [rc],2
     call fill_rect
 
     ; Clock area
@@ -239,24 +278,41 @@ draw_desktop:
     mov byte [rc],2
     call fill_rect
 
-    ; Window body
-    mov word [rx],60
+    ; Window body (shifted right to make room for icons)
+    mov word [rx],80
     mov word [ry],40
-    mov word [rw],200
+    mov word [rw],180
     mov word [rh],120
     mov byte [rc],6
     call fill_rect
 
     ; Title bar
-    mov word [rx],60
+    mov word [rx],80
     mov word [ry],40
-    mov word [rw],200
+    mov word [rw],180
     mov word [rh],12
     mov byte [rc],7
     call fill_rect
 
-    ; Close button
-    mov word [rx],248
+    ; Title bar buttons: Minimize, Maximize, Close
+    ; Minimize
+    mov word [rx],234
+    mov word [ry],43
+    mov word [rw],6
+    mov word [rh],6
+    mov byte [rc],3
+    call fill_rect
+
+    ; Maximize
+    mov word [rx],244
+    mov word [ry],43
+    mov word [rw],6
+    mov word [rh],6
+    mov byte [rc],3
+    call fill_rect
+
+    ; Close (Red)
+    mov word [rx],254
     mov word [ry],43
     mov word [rw],6
     mov word [rh],6
@@ -272,41 +328,47 @@ draw_desktop:
 
     ; Window title
     mov dh,5
-    mov dl,9
+    mov dl,11
     call set_cursor
     mov si,str_window_title
     call print_str
 
     ; Window body text
     mov dh,8
-    mov dl,9
+    mov dl,11
     call set_cursor
     mov si,str_welcome1
     call print_str
 
     mov dh,10
-    mov dl,9
+    mov dl,11
     call set_cursor
     mov si,str_welcome2
     call print_str
 
     mov dh,12
-    mov dl,9
+    mov dl,11
     call set_cursor
     mov si,str_welcome3
     call print_str
 
     mov dh,17
-    mov dl,9
+    mov dl,11
     call set_cursor
     mov si,str_press_key
     call print_str
 
-    ; Taskbar text
+    ; Taskbar items text
     mov dh,23
-    mov dl,1
+    mov dl,14
     call set_cursor
     mov si,str_start
+    call print_str
+
+    mov dh,23
+    mov dl,20
+    call set_cursor
+    mov si,str_search
     call print_str
 
     mov dh,23
@@ -419,7 +481,7 @@ palette_data:
     db 12, 12, 17      ; 6 window bg
     db 17, 17, 22      ; 7 title bar
     db 63, 63, 63      ; 8 white (spinner head)
-    db 41, 56, 40      ; 9 accent green
+    db 63,  5,  5      ; 9 close red
     db 25, 30, 45      ; 10 (unused)
     db 20, 27, 40      ; 11 mid blue (spinner trail-1)
     db 14, 18, 28      ; 12 dim blue (spinner trail-2)
@@ -555,6 +617,9 @@ str_welcome2     db "RLVAL OS booted successfully.",0
 str_welcome3     db "GUI rendered in VGA mode 13h.",0
 str_press_key    db "[Press any key to reboot]",0
 str_start        db "Start",0
+str_search       db "Search",0
+str_this_pc      db "This PC",0
+str_recycle      db "Recycle",0
 str_clock        db "12:34",0
 
 
