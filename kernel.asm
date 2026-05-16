@@ -1053,8 +1053,6 @@ draw_text:
     ; Save initial coordinates
     mov ax, [rx]
     mov [temp_x], ax
-    mov ax, [ry]
-    mov [temp_y], ax
     
     ; Get BIOS 8x8 font pointer
     mov ax, 0x1130
@@ -1080,10 +1078,9 @@ draw_text:
     shl bx, 3 ; bx * 8
     add bp, bx
     
-    mov es, dx ; restore font segment
-    
     mov cx, 8 ; 8 rows
 .row_loop:
+    mov es, dx ; restore font segment
     mov al, [es:bp] ; get font byte
     push cx
     mov cx, 8 ; 8 pixels
