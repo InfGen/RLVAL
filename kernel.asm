@@ -114,7 +114,79 @@ KERNEL_START:
     jnz .continue_drag
     
     ; Left button just pressed - Hit detection
-    ; 1. Check Window (if visible)
+    
+    ; 1. Check Taskbar (Y >= 180)
+    mov ax, [mouseY]
+    cmp ax, 180
+    jl .check_start_menu
+    
+    ; Start Button? (X < 36)
+    mov ax, [mouseX]
+    cmp ax, 36
+    jg .done_mouse ; For now, ignore other taskbar clicks
+    
+    xor byte [startMenuVisible], 1
+    mov byte [need_redraw], 1
+    jmp .done_mouse
+
+.check_start_menu:
+    cmp byte [startMenuVisible], 0
+    je .check_window
+    
+    ; Inside Start Menu? (X < 120, Y between 70 and 180)
+    mov ax, [mouseX]
+    cmp ax, 120
+    jg .close_start_menu
+    mov ax, [mouseY]
+    cmp ax, 70
+    jl .close_start_menu
+    ; Y < 180 is already true from previous check
+    
+    ; Check Tiles
+    ; Terminal Tile (X: 10-55, Y: 80-125)
+    mov ax, [mouseX]
+    cmp ax, 10
+    jl .check_calc_tile
+    cmp ax, 55
+    jg .check_calc_tile
+    mov ax, [mouseY]
+    cmp ax, 80
+    jl .check_calc_tile
+    cmp ax, 125
+    jg .check_calc_tile
+    
+    mov byte [windowVisible], 1
+    mov byte [windowType], 1 ; Terminal
+    mov byte [startMenuVisible], 0
+    mov byte [need_redraw], 1
+    jmp .done_mouse
+
+.check_calc_tile:
+    ; Calculator Tile (X: 65-110, Y: 80-125)
+    mov ax, [mouseX]
+    cmp ax, 65
+    jl .done_mouse ; Inside menu but no tile
+    cmp ax, 110
+    jg .done_mouse
+    mov ax, [mouseY]
+    cmp ax, 80
+    jl .done_mouse
+    cmp ax, 125
+    jg .done_mouse
+    
+    mov byte [windowVisible], 1
+    mov byte [windowType], 2 ; Calculator
+    mov byte [startMenuVisible], 0
+    mov byte [need_redraw], 1
+    jmp .done_mouse
+
+.close_start_menu:
+    mov byte [startMenuVisible], 0
+    mov byte [need_redraw], 1
+    ; Fall through to check window
+
+.check_window:
+    ; 2. Check Window (if visible)
     cmp byte [windowVisible], 0
     je .check_icons
     
@@ -810,82 +882,82 @@ draw_desktop:
 
     ; Taskbar
     mov word [rx],0
-    mov word [ry],176
+    mov word [ry],180
     mov word [rw],320
-    mov word [rh],24
+    mov word [rh],20
+    mov byte [rc],5 ; Dark Gray
+    call fill_rect
+
+    ; Start button
+    mov word [rx],0
+    mov word [ry],180
+    mov word [rw],36
+    mov word [rh],20
     mov byte [rc],5
     call fill_rect
 
-    ; Start button (Left-aligned)
-    mov word [rx],2
-    mov word [ry],178
-    mov word [rw],32
-    mov word [rh],20
-    mov byte [rc],5 ; Flat, same as taskbar or slightly different? Let's use 5
-    call fill_rect
-
-    ; Start button icon (4 white squares) - Windows 10 style
+    ; Windows logo in Start button
     mov byte [rc], 8
-    mov word [rw], 4
-    mov word [rh], 4
-    
+    mov word [rw], 6
+    mov word [rh], 6
     mov word [rx], 11
     mov word [ry], 184
     call fill_rect
-    
-    mov word [rx], 16
+    mov word [rx], 19
     mov word [ry], 184
     call fill_rect
-    
     mov word [rx], 11
-    mov word [ry], 189
+    mov word [ry], 191
     call fill_rect
-    
-    mov word [rx], 16
-    mov word [ry], 189
+    mov word [rx], 19
+    mov word [ry], 191
     call fill_rect
 
-    ; Search box next to Start
+    ; Search box
     mov word [rx],36
-    mov word [ry],178
+    mov word [ry],182
     mov word [rw],80
-    mov word [rh],20
-    mov byte [rc],10
+    mov word [rh],16
+    mov byte [rc],10 ; White/Light gray
     call fill_rect
 
-    ; Search icon (just a circle/magnifier or text)
-    mov word [rx], 42
-    mov word [ry], 184
-    mov byte [rc], 8
+    mov word [rx], 40
+    mov word [ry], 186
+    mov byte [rc], 4 ; Gray text
     mov si, str_search
     call draw_text
 
-    ; Clock area (Right-aligned)
-    mov word [rx],280
-    mov word [ry],178
-    mov word [rw],40
-    mov word [rh],20
-    mov byte [rc],5
+    ; System Tray
+    mov word [rx], 280
+    mov word [ry], 180
+    mov word [rw], 40
+    mov word [rh], 20
+    mov byte [rc], 5
     call fill_rect
-
+    
     mov word [rx], 285
-    mov word [ry], 184
+    mov word [ry], 186
     mov byte [rc], 8
     mov si, str_clock
     call draw_text
 
-    ; Window shadow (none for flat Windows 10 look usually, but let's keep it simple or remove)
+    ; Start Menu
+    cmp byte [startMenuVisible], 1
+    jne .skip_start_menu
+    call draw_start_menu
+.skip_start_menu:
+
+    ; Window body (Flat)
     cmp byte [windowVisible], 0
     je .skip_window
 
-    ; Window body (Flat)
     mov ax, [windowX]
     mov [rx], ax
     mov ax, [windowY]
     mov [ry], ax
     mov word [rw], 200
     mov word [rh], 140
-    mov byte [rc], 6
+    mov byte [rc], 6 ; Window BG
     call fill_rect
 
     ; Title bar (Flat, Dark)
@@ -895,7 +967,7 @@ draw_desktop:
     mov [ry], ax
     mov word [rw], 200
     mov word [rh], 22
-    mov byte [rc], 7
+    mov byte [rc], 7 ; Title Bar
     call fill_rect
 
     ; Window title
@@ -909,10 +981,15 @@ draw_desktop:
     
     cmp byte [windowType], 1
     je .term_title
+    cmp byte [windowType], 2
+    je .calc_title
     mov si, str_window_title
     jmp .draw_t
 .term_title:
     mov si, str_term_title
+    jmp .draw_t
+.calc_title:
+    mov si, str_calc_title
 .draw_t:
     call draw_text
 
@@ -941,6 +1018,8 @@ draw_desktop:
     ; --- Window Content ---
     cmp byte [windowType], 1
     je .draw_terminal_content
+    cmp byte [windowType], 2
+    je .draw_calc_content
 
     ; Welcome content
     mov byte [rc], 4
@@ -969,6 +1048,18 @@ draw_desktop:
     add ax, 120
     mov [ry], ax
     mov si, str_press_key
+    call draw_text
+    jmp .skip_window
+
+.draw_calc_content:
+    mov byte [rc], 4
+    mov ax, [windowX]
+    add ax, 8
+    mov [rx], ax
+    mov ax, [windowY]
+    add ax, 40
+    mov [ry], ax
+    mov si, str_calc_text
     call draw_text
     jmp .skip_window
 
@@ -1005,6 +1096,51 @@ draw_desktop:
     call draw_text
 
     .skip_window:
+    popa
+    ret
+
+; ============================================================================
+; draw_start_menu: dark gray rectangle with tiles
+; ============================================================================
+draw_start_menu:
+    pusha
+    
+    ; Menu BG
+    mov word [rx], 0
+    mov word [ry], 70
+    mov word [rw], 120
+    mov word [rh], 110
+    mov byte [rc], 6 ; Start Menu Gray
+    call fill_rect
+    
+    ; "Terminal" Tile
+    mov word [rx], 10
+    mov word [ry], 80
+    mov word [rw], 45
+    mov word [rh], 45
+    mov byte [rc], 3 ; Blue
+    call fill_rect
+    
+    mov word [rx], 12
+    mov word [ry], 115
+    mov byte [rc], 8
+    mov si, str_terminal_small
+    call draw_text
+    
+    ; "Calculator" Tile
+    mov word [rx], 65
+    mov word [ry], 80
+    mov word [rw], 45
+    mov word [rh], 45
+    mov byte [rc], 3 ; Blue
+    call fill_rect
+    
+    mov word [rx], 67
+    mov word [ry], 115
+    mov byte [rc], 8
+    mov si, str_calc_small
+    call draw_text
+    
     popa
     ret
     
@@ -1086,22 +1222,22 @@ install_palette:
     ret
 
 palette_data:
-    db  0,  0,  0      ; 0 black
-    db  0, 30, 53      ; 1 background blue (#0078D7)
-    db 10, 10, 15      ; 2 panel
-    db 30, 40, 61      ; 3 accent blue
-    db 51, 53, 61      ; 4 text light
-    db  4,  4,  4      ; 5 dark taskbar
-    db 12, 12, 17      ; 6 window bg
-    db  8,  8,  8      ; 7 dark title bar
-    db 63, 63, 63      ; 8 white
-    db 63,  5,  5      ; 9 close red
-    db 12, 12, 12      ; 10 search box
-    db 20, 27, 40      ; 11 mid blue
-    db 14, 18, 28      ; 12 dim blue
-    db 10, 13, 20      ; 13 very dim blue
-    db 30, 30, 35      ; 14
-    db 45, 45, 50      ; 15
+    db  0,  0,  0      ; 0: Black
+    db  0, 18, 38      ; 1: Dark Blue (Gradient Bottom)
+    db 10, 31, 55      ; 2: Mid Blue (Gradient Top)
+    db  0, 48, 86      ; 3: Windows Blue (Tiles)
+    db 50, 50, 50      ; 4: Medium Gray
+    db  5,  5,  5      ; 5: Dark Gray (Taskbar)
+    db  8,  8,  8      ; 6: Start Menu Gray
+    db 12, 12, 12      ; 7: Title Bar Gray
+    db 63, 63, 63      ; 8: White (Logo, Text)
+    db 60,  0,  0      ; 9: Close Red
+    db 63, 63, 63      ; 10: Search Box (White)
+    db  0, 24, 48      ; 11: Boot Spinner (Mid Blue)
+    db  0, 15, 30      ; 12: Boot Spinner (Dim Blue)
+    db  0,  8, 16      ; 13: Boot Spinner (Darker Blue)
+    db 20, 20, 20      ; 14: Unused
+    db 40, 40, 40      ; 15: Unused
 
 
 ; ============================================================================
@@ -1174,12 +1310,69 @@ fill_rect:
 
 
 ; ============================================================================
-; draw_bg_pattern: fills screen with color 1 and subtle dots of color 2
+; draw_bg_pattern: fills screen with a vertical blue gradient and Hero logo
 ; ============================================================================
 draw_bg_pattern:
     pusha
-    mov al, 1
-    call clear_screen
+    push es
+    mov ax, [draw_seg]
+    mov es, ax
+    xor di, di
+    
+    ; Vertical gradient from index 2 (top) to index 1 (bottom)
+    ; 200 rows. We'll use index 2 for top 100 rows and index 1 for bottom 100 rows
+    ; Or better: actually interpolate? Mode 13h only has 256 colors.
+    ; Let's just do a simple split or a few bands.
+    
+    mov al, 2 ; Top color
+    mov cx, 320 * 100 / 2
+    rep stosw
+    
+    mov al, 1 ; Bottom color
+    mov cx, 320 * 100 / 2
+    rep stosw
+    
+    call draw_hero_logo
+    
+    pop es
+    popa
+    ret
+
+draw_hero_logo:
+    pusha
+    ; Draw the 4 panes of the Windows logo
+    ; Centered roughly. Screen is 320x200.
+    ; Pane size: 30x30 with small gap
+    mov byte [rc], 8 ; White
+    
+    ; Top-Left
+    mov word [rx], 128
+    mov word [ry], 70
+    mov word [rw], 30
+    mov word [rh], 30
+    call fill_rect
+    
+    ; Top-Right
+    mov word [rx], 162
+    mov word [ry], 68
+    mov word [rw], 32
+    mov word [rh], 32
+    call fill_rect
+    
+    ; Bottom-Left
+    mov word [rx], 128
+    mov word [ry], 104
+    mov word [rw], 30
+    mov word [rh], 30
+    call fill_rect
+    
+    ; Bottom-Right
+    mov word [rx], 162
+    mov word [ry], 104
+    mov word [rw], 32
+    mov word [rh], 32
+    call fill_rect
+    
     popa
     ret
 
@@ -1391,6 +1584,7 @@ windowX         dw 80
 windowY         dw 40
 windowVisible   db 1
 windowType      db 0 ; 0=Welcome, 1=Terminal
+startMenuVisible db 0
 isDragging      db 0
 dragOffsetX     dw 0
 dragOffsetY     dw 0
@@ -1477,8 +1671,12 @@ str_search       db "Search",0
 str_this_pc      db "This PC",0
 str_recycle      db "Recycle",0
 str_terminal     db "Terminal",0
+str_terminal_small db "Term",0
+str_calc_small     db "Calc",0
 str_clock        db "12:34",0
 str_term_title   db "Command Prompt",0
+str_calc_title   db "Calculator",0
+str_calc_text    db "0",0
 str_prompt       db "C:\> ",0
 str_x            db "X",0
 
@@ -1490,6 +1688,6 @@ str_shutdown     db "Shutdown",0
 
 
 ; ============================================================================
-; Pad kernel to 32 sectors (16 KB)
+; Pad kernel to 64 sectors (32 KB)
 ; ============================================================================
-times 16384-($-$$) db 0
+times 32768-($-$$) db 0
