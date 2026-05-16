@@ -25,6 +25,8 @@
 [ORG 0x0000]
 
 KERNEL_START:
+    mov [is_bios_mode], bx          ; Store the BIOS flag from bootloader
+
     mov ax, cs
     mov ds, ax
     mov es, ax
@@ -34,6 +36,11 @@ KERNEL_START:
     int 0x10
 
     call install_palette
+
+    cmp word [is_bios_mode], 1
+    jne .skip_bios_menu
+    call bios_menu_entry
+.skip_bios_menu:
 
     ; ---- Boot screen ----
     mov al, 1
@@ -56,11 +63,11 @@ KERNEL_START:
 
     ; ---- Spinner animation (Windows 11 style) ----
     ; The spinner is centered at (160, 130) with radius 12.
-    ; Run ~240 frames -> spinner makes ~30 full revolutions.
+    ; Run ~600 frames -> spinner makes ~75 full revolutions.
     mov word [frame], 0
 .spin_loop:
     mov ax, [frame]
-    cmp ax, 240
+    cmp ax, 600
     jae .spin_done
 
     call draw_spinner
@@ -198,6 +205,164 @@ dot_offsets:
     db  -8,   8      ; i=5  bottom-left
     db -12,   0      ; i=6  left
     db  -8,  -8      ; i=7  top-left
+
+
+; ============================================================================
+; ============================================================================
+; BIOS Menu Entry
+; ============================================================================
+bios_menu_entry:
+    pusha
+    mov byte [selected_option], 0
+
+.menu_loop:
+    mov al, 10                      ; Windows Blue background
+    call clear_screen
+
+    ; Title "Choose an option"
+    mov dh, 4
+    mov dl, 12
+    call set_cursor
+    mov si, str_bios_title
+    call print_str
+
+    call draw_tiles
+
+    ; Wait for key
+    mov ah, 0
+    int 0x16
+
+    ; Navigation
+    cmp ah, 0x4B                    ; Left Arrow
+    je .prev_option
+    cmp ah, 0x4D                    ; Right Arrow
+    je .next_option
+    cmp al, 13                      ; Enter
+    je .select_option
+    jmp .menu_loop
+
+.prev_option:
+    dec byte [selected_option]
+    jns .menu_loop
+    mov byte [selected_option], 2
+    jmp .menu_loop
+
+.next_option:
+    inc byte [selected_option]
+    cmp byte [selected_option], 3
+    jb .menu_loop
+    mov byte [selected_option], 0
+    jmp .menu_loop
+
+.select_option:
+    mov al, [selected_option]
+    cmp al, 0
+    je .done                        ; Continue
+    cmp al, 1
+    je .reboot                      ; Reboot
+    cmp al, 2
+    je .shutdown                    ; Shutdown
+    jmp .menu_loop
+
+.reboot:
+    int 0x19
+
+.shutdown:
+    ; APM Shutdown
+    mov ax, 0x5301
+    xor bx, bx
+    int 0x15
+    mov ax, 0x530e
+    xor bx, bx
+    mov cx, 0x0102
+    int 0x15
+    mov ax, 0x5307
+    mov bx, 0x0001
+    mov cx, 0x0003
+    int 0x15
+
+    ; Fallback: just hang
+.hang:
+    cli
+    hlt
+    jmp .hang
+
+.done:
+    popa
+    ret
+
+; ============================================================================
+; draw_tiles: renders three 60x60 square tiles for BIOS menu
+; ============================================================================
+draw_tiles:
+    pusha
+
+    ; Tile 0: Continue
+    mov word [tile_x], 35
+    mov byte [rc], 2                ; Slightly lighter than background
+    call .draw_single_tile
+    mov dh, 14
+    mov dl, 6
+    call set_cursor
+    mov si, str_continue
+    call print_str
+
+    ; Tile 1: Reboot
+    mov word [tile_x], 130
+    mov byte [rc], 2
+    call .draw_single_tile
+    mov dh, 14
+    mov dl, 18
+    call set_cursor
+    mov si, str_reboot
+    call print_str
+
+    ; Tile 2: Shutdown
+    mov word [tile_x], 225
+    mov byte [rc], 2
+    call .draw_single_tile
+    mov dh, 14
+    mov dl, 29
+    call set_cursor
+    mov si, str_shutdown
+    call print_str
+
+    popa
+    ret
+
+.draw_single_tile:
+    ; Check if this tile is selected
+    mov al, [selected_option]
+    mov bl, 0
+    cmp word [tile_x], 35
+    je .check_sel
+    inc bl
+    cmp word [tile_x], 130
+    je .check_sel
+    inc bl
+.check_sel:
+    cmp al, bl
+    jne .not_selected
+
+    ; Draw white border for selected tile
+    mov ax, [tile_x]
+    sub ax, 2
+    mov [rx], ax
+    mov word [ry], 78
+    mov word [rw], 64
+    mov word [rh], 64
+    mov byte [rc], 8                ; White
+    call fill_rect
+
+.not_selected:
+    mov ax, [tile_x]
+    mov [rx], ax
+    mov word [ry], 80
+    mov word [rw], 60
+    mov word [rh], 60
+    mov byte [rc], 2                ; Tile color
+    call fill_rect
+    ret
 
 
 ; ============================================================================
@@ -482,7 +647,7 @@ palette_data:
     db 17, 17, 22      ; 7 title bar
     db 63, 63, 63      ; 8 white (spinner head)
     db 63,  5,  5      ; 9 close red
-    db 25, 30, 45      ; 10 (unused)
+    db  0, 30, 53      ; 10 Windows Blue
     db 20, 27, 40      ; 11 mid blue (spinner trail-1)
     db 14, 18, 28      ; 12 dim blue (spinner trail-2)
     db 10, 13, 20      ; 13 very dim blue (spinner trail-3+)
@@ -595,6 +760,9 @@ long_delay:
 ; ============================================================================
 ; Globals
 ; ============================================================================
+is_bios_mode    dw 0
+selected_option db 0
+tile_x          dw 0
 rx    dw 0
 ry    dw 0
 rw    dw 0
@@ -621,6 +789,12 @@ str_search       db "Search",0
 str_this_pc      db "This PC",0
 str_recycle      db "Recycle",0
 str_clock        db "12:34",0
+
+; BIOS Menu Strings
+str_bios_title   db "Choose an option",0
+str_continue     db "Continue",0
+str_reboot       db "Reboot",0
+str_shutdown     db "Shutdown",0
 
 
 ; ============================================================================
