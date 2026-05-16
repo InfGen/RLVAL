@@ -81,6 +81,37 @@ KERNEL_START:
 
     ; ---- Desktop ----
     call draw_desktop
+    call init_mouse
+    
+    ; Initial save of background at starting position
+    mov ax, [mouseX]
+    mov [oldMouseX], ax
+    mov ax, [mouseY]
+    mov [oldMouseY], ax
+    call save_cursor_bg
+    call draw_cursor_at_mouse
+
+.main_loop:
+    ; Check if mouse moved
+    cmp byte [mouse_updated], 1
+    jne .check_keyboard
+    
+    mov byte [mouse_updated], 0
+    
+    call restore_cursor_bg
+    
+    mov ax, [mouseX]
+    mov [oldMouseX], ax
+    mov ax, [mouseY]
+    mov [oldMouseY], ax
+    
+    call save_cursor_bg
+    call draw_cursor_at_mouse
+
+.check_keyboard:
+    mov ah, 1
+    int 0x16
+    jz .main_loop
 
     ; Wait for keypress, then reboot
     mov ah, 0
@@ -91,6 +122,221 @@ KERNEL_START:
     cli
     hlt
     jmp .hang
+
+
+; ============================================================================
+; Mouse Driver & Support
+; ============================================================================
+init_mouse:
+    pusha
+    ; Enable mouse in BIOS
+    mov ax, 0xC205
+    mov bh, 3 ; 3-byte packet
+    int 0x15
+    jc .done
+
+    ; Set mouse handler
+    mov ax, 0xC207
+    push cs
+    pop es
+    mov bx, mouse_handler
+    int 0x15
+    jc .done
+
+    ; Enable mouse
+    mov ax, 0xC200
+    mov bh, 1 ; Enable
+    int 0x15
+.done:
+    popa
+    ret
+
+mouse_handler:
+    push ds
+    pusha
+    mov ax, cs
+    mov ds, ax
+    mov bp, sp
+    
+    ; [BP+28] = Status
+    ; [BP+26] = X displacement
+    ; [BP+24] = Y displacement
+    
+    mov al, [bp+28]
+    mov [mouseButtons], al
+    
+    ; Update X
+    mov ax, [bp+26]
+    and ax, 0x00FF
+    test byte [bp+28], 0x10 ; X sign
+    jz .x_pos
+    or ax, 0xFF00
+.x_pos:
+    add [mouseX], ax
+    
+    ; Update Y
+    mov ax, [bp+24]
+    and ax, 0x00FF
+    test byte [bp+28], 0x20 ; Y sign
+    jz .y_pos
+    or ax, 0xFF00
+.y_pos:
+    sub [mouseY], ax ; Y is inverted in BIOS
+    
+    ; Clamp X (0..311) - 8px width cursor
+    cmp word [mouseX], 0
+    jge .check_max_x
+    mov word [mouseX], 0
+    jmp .check_y
+.check_max_x:
+    cmp word [mouseX], 311
+    jle .check_y
+    mov word [mouseX], 311
+
+.check_y:
+    ; Clamp Y (0..187) - 12px height cursor
+    cmp word [mouseY], 0
+    jge .check_max_y
+    mov word [mouseY], 0
+    jmp .m_done
+.check_max_y:
+    cmp word [mouseY], 187
+    jle .m_done
+    mov word [mouseY], 187
+
+.m_done:
+    mov byte [mouse_updated], 1
+    popa
+    pop ds
+    retf
+
+save_cursor_bg:
+    pusha
+    push es
+    mov ax, 0xA000
+    mov es, ax
+    mov si, cursor_bg_buffer
+    
+    mov dx, [mouseY]
+    mov bx, [mouseX]
+    
+    mov cx, 12 ; height
+.row:
+    push cx
+    push bx
+    
+    mov di, dx
+    mov ax, di
+    shl di, 8
+    shl ax, 6
+    add di, ax
+    add di, bx
+    
+    mov cx, 8 ; width
+.col:
+    mov al, [es:di]
+    mov [si], al
+    inc di
+    inc si
+    loop .col
+    
+    pop bx
+    pop cx
+    inc dx
+    loop .row
+    
+    pop es
+    popa
+    ret
+
+restore_cursor_bg:
+    pusha
+    push es
+    mov ax, 0xA000
+    mov es, ax
+    mov si, cursor_bg_buffer
+    
+    mov dx, [oldMouseY]
+    mov bx, [oldMouseX]
+    
+    mov cx, 12 ; height
+.row:
+    push cx
+    push bx
+    
+    mov di, dx
+    mov ax, di
+    shl di, 8
+    shl ax, 6
+    add di, ax
+    add di, bx
+    
+    mov cx, 8 ; width
+.col:
+    mov al, [si]
+    mov [es:di], al
+    inc di
+    inc si
+    loop .col
+    
+    pop bx
+    pop cx
+    inc dx
+    loop .row
+    
+    pop es
+    popa
+    ret
+
+draw_cursor_at_mouse:
+    pusha
+    mov ax, [mouseX]
+    mov [rx], ax
+    mov ax, [mouseY]
+    mov [ry], ax
+    call draw_cursor
+    popa
+    ret
+
+draw_rect_3d:
+    pusha
+    call fill_rect
+    
+    ; Outer Highlight
+    mov ax, [rx]
+    mov bx, [ry]
+    mov cx, [rw]
+    mov dx, [rh]
+    
+    mov byte [rc], 15
+    mov word [rh], 1
+    call fill_rect ; Top
+    mov word [rh], dx
+    mov word [rw], 1
+    call fill_rect ; Left
+    
+    ; Outer Shadow
+    mov byte [rc], 0
+    mov ax, [rx]
+    add ax, cx
+    dec ax
+    mov [rx], ax
+    call fill_rect ; Right
+    
+    mov ax, [rx]
+    sub ax, cx
+    inc ax
+    mov [rx], ax
+    mov bx, [ry]
+    add bx, dx
+    dec bx
+    mov [ry], bx
+    mov word [rw], cx
+    mov word [rh], 1
+    call fill_rect ; Bottom
+    
+    popa
+    ret
 
 
 ; ============================================================================
@@ -420,7 +666,7 @@ draw_desktop:
     mov word [rw],58
     mov word [rh],12
     mov byte [rc],3
-    call fill_rect
+    call draw_rect_3d
 
     ; Start button icon (4 white squares)
     mov byte [rc], 8
@@ -449,7 +695,7 @@ draw_desktop:
     mov word [rw],54
     mov word [rh],12
     mov byte [rc],2
-    call fill_rect
+    call draw_rect_3d
 
     ; Clock area
     mov word [rx],270
@@ -457,7 +703,7 @@ draw_desktop:
     mov word [rw],46
     mov word [rh],12
     mov byte [rc],2
-    call fill_rect
+    call draw_rect_3d
 
     ; Window body
     mov word [rx],80
@@ -465,7 +711,7 @@ draw_desktop:
     mov word [rw],180
     mov word [rh],120
     mov byte [rc],6
-    call fill_rect
+    call draw_rect_3d
 
     ; Title bar
     mov word [rx],80
@@ -473,36 +719,7 @@ draw_desktop:
     mov word [rw],180
     mov word [rh],12
     mov byte [rc],7
-    call fill_rect
-
-    ; Window styling (3D borders)
-    ; Outer highlight (Top/Left)
-    mov word [rx], 79
-    mov word [ry], 39
-    mov word [rw], 182
-    mov word [rh], 1
-    mov byte [rc], 15
-    call fill_rect
-    mov word [rx], 79
-    mov word [ry], 39
-    mov word [rw], 1
-    mov word [rh], 122
-    mov byte [rc], 15
-    call fill_rect
-
-    ; Outer shadow (Bottom/Right)
-    mov word [rx], 79
-    mov word [ry], 161
-    mov word [rw], 182
-    mov word [rh], 1
-    mov byte [rc], 0
-    call fill_rect
-    mov word [rx], 261
-    mov word [ry], 39
-    mov word [rw], 1
-    mov word [rh], 122
-    mov byte [rc], 0
-    call fill_rect
+    call draw_rect_3d
 
     ; Title bar buttons: Minimize, Maximize, Close
     ; Minimize
@@ -511,7 +728,7 @@ draw_desktop:
     mov word [rw],6
     mov word [rh],6
     mov byte [rc],3
-    call fill_rect
+    call draw_rect_3d
 
     ; Maximize
     mov word [rx],244
@@ -519,7 +736,7 @@ draw_desktop:
     mov word [rw],6
     mov word [rh],6
     mov byte [rc],3
-    call fill_rect
+    call draw_rect_3d
 
     ; Close (Red)
     mov word [rx],254
@@ -527,7 +744,7 @@ draw_desktop:
     mov word [rw],6
     mov word [rh],6
     mov byte [rc],9
-    call fill_rect
+    call draw_rect_3d
 
     ; --- Text Elements ---
     ; Top menu bar text
@@ -578,74 +795,61 @@ draw_desktop:
     mov si, str_clock
     call draw_text
 
-    call draw_cursor
-
     popa
     ret
 
 
 ; ============================================================================
-; draw_cursor: small white arrow at (160,100)
+; draw_cursor: small white arrow at (rx, ry)
 draw_cursor:
     pusha
     mov byte [rc],8
 
-    mov word [rx],160
-    mov word [ry],100
+    mov ax, [rx]
+    mov bx, [ry]
+
     mov word [rw],1
     mov word [rh],1
     call fill_rect
 
-    mov word [rx],160
-    mov word [ry],101
+    mov word [ry],bx
+    inc word [ry]
     mov word [rw],2
-    mov word [rh],1
     call fill_rect
-
-    mov word [rx],160
-    mov word [ry],102
+    
+    inc word [ry]
     mov word [rw],3
-    mov word [rh],1
     call fill_rect
-
-    mov word [rx],160
-    mov word [ry],103
+    
+    inc word [ry]
     mov word [rw],4
-    mov word [rh],1
     call fill_rect
-
-    mov word [rx],160
-    mov word [ry],104
+    
+    inc word [ry]
     mov word [rw],5
-    mov word [rh],1
     call fill_rect
-
-    mov word [rx],160
-    mov word [ry],105
+    
+    inc word [ry]
     mov word [rw],6
-    mov word [rh],1
     call fill_rect
-
-    mov word [rx],160
-    mov word [ry],106
+    
+    inc word [ry]
     mov word [rw],7
-    mov word [rh],1
     call fill_rect
-
-    mov word [rx],160
-    mov word [ry],107
+    
+    inc word [ry]
     mov word [rw],4
-    mov word [rh],1
     call fill_rect
-
-    mov word [rx],162
-    mov word [ry],108
+    
+    inc word [ry]
+    mov word [rx],ax
+    add word [rx],2
     mov word [rw],2
-    mov word [rh],1
     call fill_rect
-
-    mov word [rx],163
-    mov word [ry],109
+    
+    inc word [ry]
+    mov word [rx],ax
+    add word [rx],3
     mov word [rw],2
     mov word [rh],3
     call fill_rect
@@ -714,28 +918,25 @@ clear_screen:
 fill_rect:
     pusha
     push es
-    mov ax,0xA000
-    mov es,ax
+    mov ax, 0xA000
+    mov es, ax
 
-    mov bp,[rh]
-    mov ax,[ry]
+    mov ax, [ry]
+    mov di, ax
+    shl ax, 8
+    shl di, 6
+    add di, ax
+    add di, [rx]
+
+    mov dx, [rh]
+    mov al, [rc]
 .row:
-    push ax
-    mov di,ax
-    mov bx,ax
-    shl ax,8
-    shl di,6
-    add di,ax
-    add di,[rx]
-    mov cx,[rw]
-    mov al,[rc]
-.col:
-    mov [es:di],al
-    inc di
-    loop .col
-    pop ax
-    inc ax
-    dec bp
+    mov cx, [rw]
+    push di
+    rep stosb
+    pop di
+    add di, 320
+    dec dx
     jnz .row
 
     pop es
@@ -971,6 +1172,14 @@ head  db 0
 dist  db 0
 temp_x dw 0
 temp_y dw 0
+
+mouseX          dw 160
+mouseY          dw 100
+mouseButtons    db 0
+oldMouseX       dw 160
+oldMouseY       dw 100
+mouse_updated   db 0
+cursor_bg_buffer times 256 db 0
 
 this_pc_icon:
     db 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
