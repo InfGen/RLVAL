@@ -56,7 +56,7 @@ KERNEL_START:
 
     ; Footer text (small, faint look — same font, just lower)
     mov dh, 22
-    mov dl, 13
+    mov dl, 11                      ; Centered better
     call set_cursor
     mov si, str_footer
     call print_str
@@ -382,7 +382,7 @@ draw_desktop:
 
     ; --- Desktop Icons ---
     ; This PC icon
-    mov word [rx], 12
+    mov word [rx], 28
     mov word [ry], 20
     mov word [rw], 16
     mov word [rh], 16
@@ -397,7 +397,7 @@ draw_desktop:
     call print_str
 
     ; Recycle Bin icon
-    mov word [rx], 12
+    mov word [rx], 28
     mov word [ry], 60
     mov word [rw], 16
     mov word [rh], 16
@@ -413,37 +413,58 @@ draw_desktop:
 
     ; Taskbar
     mov word [rx],0
-    mov word [ry],184
+    mov word [ry],176               ; Shifted up
     mov word [rw],320
-    mov word [rh],16
+    mov word [rh],24                ; Height increased
     mov byte [rc],5
     call fill_rect
 
-    ; Centered Start button (Win11 style)
-    mov word [rx],110
-    mov word [ry],188
-    mov word [rw],44
+    ; Centered Start button
+    mov word [rx],100
+    mov word [ry],184               ; Middle of taskbar
+    mov word [rw],58                ; Widened
     mov word [rh],8
     mov byte [rc],3
     call fill_rect
 
+    ; Start button icon (4 white squares)
+    mov byte [rc], 8
+    mov word [rw], 2
+    mov word [rh], 2
+    
+    mov word [rx], 104
+    mov word [ry], 186
+    call fill_rect
+    
+    mov word [rx], 107
+    mov word [ry], 186
+    call fill_rect
+    
+    mov word [rx], 104
+    mov word [ry], 189
+    call fill_rect
+    
+    mov word [rx], 107
+    mov word [ry], 189
+    call fill_rect
+
     ; Search button next to Start
-    mov word [rx],159
-    mov word [ry],188
-    mov word [rw],48
+    mov word [rx],162
+    mov word [ry],184
+    mov word [rw],54
     mov word [rh],8
     mov byte [rc],2
     call fill_rect
 
     ; Clock area
     mov word [rx],270
-    mov word [ry],188
+    mov word [ry],184
     mov word [rw],46
     mov word [rh],8
     mov byte [rc],2
     call fill_rect
 
-    ; Window body (shifted right to make room for icons)
+    ; Window body
     mov word [rx],80
     mov word [ry],40
     mov word [rw],180
@@ -457,6 +478,43 @@ draw_desktop:
     mov word [rw],180
     mov word [rh],12
     mov byte [rc],7
+    call fill_rect
+
+    ; Window styling (borders)
+    ; Top highlight
+    mov word [rx], 80
+    mov word [ry], 40
+    mov word [rw], 180
+    mov word [rh], 1
+    mov byte [rc], 15
+    call fill_rect
+    ; Left highlight
+    mov word [rx], 80
+    mov word [ry], 40
+    mov word [rw], 1
+    mov word [rh], 120
+    mov byte [rc], 15
+    call fill_rect
+    ; Bottom border
+    mov word [rx], 80
+    mov word [ry], 159
+    mov word [rw], 180
+    mov word [rh], 1
+    mov byte [rc], 0
+    call fill_rect
+    ; Right border
+    mov word [rx], 259
+    mov word [ry], 40
+    mov word [rw], 1
+    mov word [rh], 120
+    mov byte [rc], 0
+    call fill_rect
+    ; Separator
+    mov word [rx], 80
+    mov word [ry], 52
+    mov word [rw], 180
+    mov word [rh], 1
+    mov byte [rc], 0
     call fill_rect
 
     ; Title bar buttons: Minimize, Maximize, Close
@@ -525,19 +583,19 @@ draw_desktop:
 
     ; Taskbar items text
     mov dh,23
-    mov dl,14
+    mov dl,14                       ; Aligned within button
     call set_cursor
     mov si,str_start
     call print_str
 
     mov dh,23
-    mov dl,20
+    mov dl,21                       ; Aligned
     call set_cursor
     mov si,str_search
     call print_str
 
     mov dh,23
-    mov dl,35
+    mov dl,34                       ; Aligned
     call set_cursor
     mov si,str_clock
     call print_str
@@ -781,8 +839,8 @@ str_footer       db "RLVAL Corporation",0
 str_menu         db "RLVAL OS  File  Edit  View  Help",0
 str_window_title db "Welcome",0
 str_welcome1     db "Hello, world!",0
-str_welcome2     db "RLVAL OS booted successfully.",0
-str_welcome3     db "GUI rendered in VGA mode 13h.",0
+str_welcome2     db "RLVAL OS booted.",0
+str_welcome3     db "VGA 13h (320x200).",0
 str_press_key    db "[Press any key to reboot]",0
 str_start        db "Start",0
 str_search       db "Search",0
