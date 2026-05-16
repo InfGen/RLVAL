@@ -14,6 +14,8 @@ underneath. It runs on the bare metal of a virtual (or real) PC.
 
 ![bios_setup](screenshot_bios_setup.png)
 
+This graphical menu, inspired by modern recovery environments, allows you to continue booting, reboot the system, or power off using APM BIOS calls.
+
 ### Boot screen (Windows 11-style rotating spinner)
 
 | Frame 1 (head at left) | Frame 2 (head rotated to bottom) |
@@ -32,7 +34,7 @@ during boot and sign-in.
 
 | File | Purpose |
 |---|---|
-| `boot.asm` | 512-byte stage-1 bootloader with BIOS Setup trigger |
+| `boot.asm` | 512-byte stage-1 bootloader with timed ESC check for Setup |
 | `kernel.asm` | The kernel: mode-13h graphics, palette, spinner animation, desktop GUI |
 | `build.sh` | Assembles both files and produces a bootable floppy image |
 | **`rlval.img`** | The 1.44 MB bootable disk image (give this to QEMU) |
@@ -67,7 +69,7 @@ qemu-system-i386 -fda rlval.img -boot a
 A QEMU window will open and you'll see:
 
 1. BIOS POST, then `RLVAL OS - Press ESC for Setup...` from the bootloader.
-   - Press **ESC** now to enter the BIOS Setup Menu.
+   - You have **2 seconds** to press **ESC** to enter the graphical BIOS Setup Menu.
 2. **Boot screen**: dark background, "RLVAL OS" wordmark, rotating spinner
    of dots, "RLVAL Corporation" footer. (Now with an extended animation duration!)
 3. **Desktop** appears: top menu bar, "Welcome" window with text, taskbar.
@@ -133,14 +135,16 @@ creating a comet-like motion. We replicate this in `draw_spinner` (kernel.asm):
 ## Technical notes
 
 - **Boot sector** (`boot.asm`): 512 bytes, ends with the magic `0xAA55` BIOS
-  signature. Now includes a timed loop to check for the ESC key to enter a
-  mock BIOS Setup menu. Uses `INT 13h` (BIOS sector read) to copy 32 sectors to
-  memory at segment `0x1000`, then far-jumps there.
+  signature. Now includes a timed loop (approx 2 seconds) using `INT 1Ah` to
+  check for the ESC key. If detected, it signals the kernel to enter the
+  graphical Setup menu by passing a flag in the `BX` register.
 - **Kernel** (`kernel.asm`): stays in 16-bit real mode. Enters VGA mode 13h via
-  `INT 10h, AX=0013h` — a flat 64 KB framebuffer at `0xA0000`, one byte per
-  pixel, each byte a palette index.
-- **Custom palette**: First 16 DAC entries programmed via I/O for our
-  modern-dark colors plus the 4 brightness levels needed by the spinner trail.
+  `INT 10h, AX=0013h`. If the BIOS flag is set, it renders a modern blue
+  "Choose an option" screen with keyboard-navigable tiles.
+- **Shutdown**: Implemented using APM (Advanced Power Management) BIOS calls
+  (`INT 15h, AX=5307h`) to power off the machine from the BIOS menu.
+- **Custom palette**: DAC entries programmed via I/O. Added "Windows Blue"
+  at index 10 for the BIOS setup background.
 - **Drawing primitive**: A single `fill_rect` that reads its args from globals
   (`rx`, `ry`, `rw`, `rh`, `rc`) — avoids fragile register juggling in 16-bit.
 - **Text**: BIOS teletype `INT 10h, AH=0Eh` (works in mode 13h, uses the
@@ -151,7 +155,7 @@ creating a comet-like motion. We replicate this in `draw_spinner` (kernel.asm):
 
 - No protected mode, paging, or multitasking
 - No real mouse driver (cursor drawn at a fixed position)
-- No keyboard input beyond "press any key to reboot" and the ESC setup trigger
+- No keyboard input beyond the BIOS menu navigation and the "press any key to reboot" trigger
 - No filesystem
 - Animation timing is a busy-loop calibrated for QEMU on a modern host; speed
   will vary on real hardware
