@@ -46,23 +46,25 @@ KERNEL_START:
     mov al, 0
     call clear_screen
 
+    call draw_diamond_logo
+
     ; Wordmark "RLVAL OS" using BIOS 8x8 font (text via INT 10h teletype).
     ; mode 13h = 40 cols x 25 rows.  "RLVAL OS" is 8 chars -> col (40-8)/2 = 16.
-    mov dh, 9                       ; row
+    mov dh, 4                       ; row
     mov dl, 16                      ; col
     call set_cursor
     mov si, str_title
     call print_str
 
     ; Footer text (small, faint look — same font, just lower)
-    mov dh, 22
+    mov dh, 24
     mov dl, 11                      ; Centered better
     call set_cursor
     mov si, str_footer
     call print_str
 
     ; ---- Spinner animation (Windows 11 style) ----
-    ; The spinner is centered at (160, 130) with radius 12.
+    ; The spinner is centered at (160, 165) below the logo.
     ; Run ~600 frames -> spinner makes ~75 full revolutions.
     mov word [frame], 0
 .spin_loop:
@@ -628,10 +630,10 @@ draw_spinner:
     sub ax, 2                       ; center the 4x4 dot on the point
     mov [rx], ax
 
-    ; Y = 130 + (signed) offset
+    ; Y = 165 + (signed) offset
     mov al, [si+1]
     cbw
-    add ax, 130
+    add ax, 165
     sub ax, 2
     mov [ry], ax
 
@@ -677,7 +679,7 @@ bios_menu_entry:
     mov byte [selected_option], 0
 
 .menu_loop:
-    mov al, 10                      ; Windows Blue background
+    mov al, 3                      ; Windows Blue background
     call clear_screen
 
     ; Title "Choose an option"
@@ -909,7 +911,7 @@ draw_desktop:
     mov word [ry],182
     mov word [rw],100
     mov word [rh],16
-    mov byte [rc],7 ; Slightly lighter
+    mov byte [rc],10 ; White
     call fill_rect
 
     mov word [rx], 30
@@ -919,17 +921,17 @@ draw_desktop:
     call draw_text
 
     ; System Tray
-    mov word [rx], 280
+    mov word [rx], 230
     mov word [ry], 180
-    mov word [rw], 40
+    mov word [rw], 90
     mov word [rh], 20
     mov byte [rc], 5
     call fill_rect
     
-    mov word [rx], 285
+    mov word [rx], 235
     mov word [ry], 186
     mov byte [rc], 8
-    mov si, str_clock
+    mov si, str_tray
     call draw_text
 
     ; Start Menu
@@ -1110,7 +1112,16 @@ draw_desktop:
     
     ; File items
     mov ax, [windowX]
-    add ax, 60
+    add ax, 55
+    mov [rx], ax
+    mov ax, [windowY]
+    add ax, 42
+    mov [ry], ax
+    mov si, generic_file_icon
+    call draw_icon
+    
+    mov ax, [windowX]
+    add ax, 75
     mov [rx], ax
     mov ax, [windowY]
     add ax, 45
@@ -1119,7 +1130,21 @@ draw_desktop:
     mov si, str_file1
     call draw_text
     
-    add word [ry], 12
+    mov ax, [windowX]
+    add ax, 55
+    mov [rx], ax
+    mov ax, [windowY]
+    add ax, 58
+    mov [ry], ax
+    mov si, generic_file_icon
+    call draw_icon
+    
+    mov ax, [windowX]
+    add ax, 75
+    mov [rx], ax
+    mov ax, [windowY]
+    add ax, 61
+    mov [ry], ax
     mov si, str_file2
     call draw_text
     jmp .skip_window
@@ -1308,6 +1333,39 @@ palette_data:
     db 31,  0, 63      ; 21: Indigo
     db 63,  0, 63      ; 22: Violet
     times (32-23)*3 db 0
+    db 10, 10, 15      ; 32
+    db  9,  9, 14      ; 33
+    db  9,  9, 14      ; 34
+    db  9,  9, 13      ; 35
+    db  8,  8, 13      ; 36
+    db  8,  8, 13      ; 37
+    db  8,  8, 12      ; 38
+    db  8,  8, 12      ; 39
+    db  7,  7, 12      ; 40
+    db  7,  7, 11      ; 41
+    db  7,  7, 11      ; 42
+    db  7,  7, 11      ; 43
+    db  6,  6, 10      ; 44
+    db  6,  6, 10      ; 45
+    db  6,  6, 10      ; 46
+    db  6,  6,  9      ; 47
+    db  5,  5,  9      ; 48
+    db  5,  5,  8      ; 49
+    db  5,  5,  8      ; 50
+    db  5,  5,  8      ; 51
+    db  4,  4,  7      ; 52
+    db  4,  4,  7      ; 53
+    db  4,  4,  7      ; 54
+    db  4,  4,  6      ; 55
+    db  3,  3,  6      ; 56
+    db  3,  3,  6      ; 57
+    db  3,  3,  5      ; 58
+    db  3,  3,  5      ; 59
+    db  2,  2,  5      ; 60
+    db  2,  2,  4      ; 61
+    db  2,  2,  4      ; 62
+    db  2,  2,  4      ; 63
+    times (256-64)*3 db 0
 
 
 ; ============================================================================
@@ -1389,14 +1447,26 @@ draw_bg_pattern:
     mov es, ax
     xor di, di
     
-    ; Vertical gradient from index 2 (top) to index 1 (bottom)
-    mov al, 2 ; Top color
-    mov cx, 320 * 60 / 2
-    rep stosw
+    ; Smooth vertical gradient (32 colors: 32-63)
+    mov cx, 200 ; 200 rows
+.row:
+    push cx
+    ; Calculate color for this row
+    ; row = 200 - cx (0 to 199)
+    mov ax, 200
+    sub ax, cx
     
-    mov al, 1 ; Bottom color
-    mov cx, 320 * 140 / 2
-    rep stosw
+    ; color index = 32 + (ax * 31 / 199)
+    mov dx, 31
+    mul dx
+    mov bx, 199
+    div bx
+    add al, 32
+    
+    mov cx, 320
+    rep stosb
+    pop cx
+    loop .row
     
     call draw_diamond_logo
     
@@ -1785,6 +1855,24 @@ terminal_icon:
     db 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
     db 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 
+generic_file_icon:
+    db 0,0,0,8,8,8,8,8,8,8,8,0,0,0,0,0
+    db 0,0,0,8,0,0,0,0,0,0,8,8,0,0,0,0
+    db 0,0,0,8,0,0,0,0,0,0,0,8,0,0,0,0
+    db 0,0,0,8,0,0,0,0,0,0,0,8,0,0,0,0
+    db 0,0,0,8,0,0,0,0,0,0,0,8,0,0,0,0
+    db 0,0,0,8,0,0,0,0,0,0,0,8,0,0,0,0
+    db 0,0,0,8,0,0,0,0,0,0,0,8,0,0,0,0
+    db 0,0,0,8,0,0,0,0,0,0,0,8,0,0,0,0
+    db 0,0,0,8,0,0,0,0,0,0,0,8,0,0,0,0
+    db 0,0,0,8,0,0,0,0,0,0,0,8,0,0,0,0
+    db 0,0,0,8,0,0,0,0,0,0,0,8,0,0,0,0
+    db 0,0,0,8,0,0,0,0,0,0,0,8,0,0,0,0
+    db 0,0,0,8,8,8,8,8,8,8,8,8,0,0,0,0
+    db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+
 ; ============================================================================
 ; Strings
 ; ============================================================================
@@ -1802,15 +1890,15 @@ str_recycle      db "Recycle",0
 str_terminal     db "Terminal",0
 str_terminal_small db "Term",0
 str_explorer_small db "File",0
-str_clock        db "12:34",0
+str_tray        db "12:34 10/25/23",0
 str_term_title   db "Command Prompt",0
 str_explorer_title db "File Explorer",0
 str_home         db "Home",0
 str_desktop_side db "Desktop",0
 str_documents    db "Documents",0
 str_path         db "C:\Users\Admin",0
-str_file1        db "MyData.txt",0
-str_file2        db "RLVAL_OS.bin",0
+str_file1        db "1mb.exe",0
+str_file2        db "download.jpg",0
 str_prompt       db "C:\> ",0
 str_x            db "X",0
 str_R            db "R",0
